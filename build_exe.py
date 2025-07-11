@@ -240,19 +240,28 @@ def main():
         print("\n构建完成！")
         print("你可以在 dist 目录中找到可执行文件")
         
-        # 询问是否清理构建文件
-        while True:
-            choice = input("\n是否清理构建文件？(y/n): ").lower()
-            if choice in ['y', 'yes', '是']:
-                clean_build_files()
-                break
-            elif choice in ['n', 'no', '否']:
-                print("保留构建文件")
-                break
-            else:
-                print("请输入 y 或 n")
+        # 检查是否在CI环境中（GitHub Actions）
+        ci_env = os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS')
+        
+        if ci_env:
+            # 在CI环境中自动清理构建文件
+            print("在CI环境中，自动清理构建文件")
+            clean_build_files()
+        else:
+            # 询问是否清理构建文件
+            while True:
+                choice = input("\n是否清理构建文件？(y/n): ").lower()
+                if choice in ['y', 'yes', '是']:
+                    clean_build_files()
+                    break
+                elif choice in ['n', 'no', '否']:
+                    print("保留构建文件")
+                    break
+                else:
+                    print("请输入 y 或 n")
     else:
         print("构建失败")
+        sys.exit(1)  # 在构建失败时退出并返回错误代码
 
 if __name__ == "__main__":
     main()

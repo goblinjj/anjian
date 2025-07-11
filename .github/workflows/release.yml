@@ -1,0 +1,93 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if (Test-Path "requirements.txt") {
+          pip install -r requirements.txt
+        }
+        pip install pyinstaller
+      shell: pwsh
+      
+    - name: Verify required files
+      run: |
+        Write-Host "检查必需文件..."
+        $requiredFiles = @("main_gui.py", "start_gui.py", "models.py", "file_manager.py", "logo.ico")
+        foreach ($file in $requiredFiles) {
+          if (Test-Path $file) {
+            Write-Host "✓ 找到文件: $file"
+          } else {
+            Write-Host "✗ 缺少文件: $file"
+            exit 1
+          }
+        }
+      shell: pwsh
+      
+    - name: Build EXE with PyInstaller
+      run: |
+        Write-Host "开始构建EXE文件..."
+        python build_exe.py
+      shell: pwsh
+      env:
+        CI: true
+        GITHUB_ACTIONS: true
+        
+    - name: Verify build output
+      run: |
+        if (Test-Path "dist\按键小精灵.exe") {
+          Write-Host "✓ EXE文件构建成功"
+          Write-Host "文件大小: $((Get-Item 'dist\按键小精灵.exe').Length / 1MB) MB"
+        } else {
+          Write-Host "✗ EXE文件构建失败"
+          exit 1
+        }
+        
+        Write-Host "dist目录内容:"
+        Get-ChildItem "dist" -Recurse | Format-Table Name, Length, LastWriteTime
+      shell: pwsh
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: keymouse-spirit-${{ github.sha }}
+        path: |
+          dist/按键小精灵.exe
+          dist/*.png
+          dist/*.json
+        retention-days: 90
+        if-no-files-found: error
+        
+    - name: Upload to Release (if release event)
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/按键小精灵.exe
+          dist/*.png
+          dist/*.json
+        fail_on_unmatched_files: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
