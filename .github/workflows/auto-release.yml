@@ -1,4 +1,4 @@
-name: Auto Release
+name: Build and Release
 
 on:
   push:
@@ -9,28 +9,19 @@ on:
       - 'docs/**'
   workflow_dispatch:
 
-# 添加权限配置，允许创建Release
 permissions:
   contents: write
   actions: read
-  checks: read
-  deployments: read
-  issues: read
-  packages: read
-  pull-requests: read
-  repository-projects: read
-  security-events: read
-  statuses: read
 
 jobs:
-  auto-release:
+  build-and-release:
     runs-on: windows-latest
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 获取完整的git历史
+        fetch-depth: 0
         
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
@@ -38,7 +29,7 @@ jobs:
         python-version: '3.11'
         cache: 'pip'
         
-    - name: Install Python dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         if (Test-Path "requirements.txt") {
@@ -53,17 +44,17 @@ jobs:
         $requiredFiles = @("main_gui.py", "start_gui.py", "models.py", "file_manager.py", "logo.ico")
         foreach ($file in $requiredFiles) {
           if (Test-Path $file) {
-            Write-Host "✓ Found file: $file"
+            Write-Host "Found: $file"
           } else {
-            Write-Host "✗ Missing file: $file"
+            Write-Host "Missing: $file"
             exit 1
           }
         }
       shell: pwsh
       
-    - name: Build EXE with PyInstaller
+    - name: Build EXE
       run: |
-        Write-Host "Starting EXE build..."
+        Write-Host "Building EXE file..."
         python build_exe.py
       shell: pwsh
       env:
@@ -72,35 +63,31 @@ jobs:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
         
-    - name: Verify build output
+    - name: Verify build and generate hashes
       run: |
         if (Test-Path "dist\按键小精灵.exe") {
           Write-Host "EXE file built successfully"
           $fileSize = (Get-Item 'dist\按键小精灵.exe').Length / 1MB
           Write-Host "File size: $([math]::Round($fileSize, 2)) MB"
+          
+          # Generate hashes
+          Write-Host "Generating file hashes..."
+          python generate_hashes.py
+          
+          # Get hashes for display
+          $md5 = (Get-FileHash -Algorithm MD5 "dist\按键小精灵.exe").Hash
+          $sha256 = (Get-FileHash -Algorithm SHA256 "dist\按键小精灵.exe").Hash
+          Write-Host "MD5: $md5"
+          Write-Host "SHA256: $sha256"
         } else {
           Write-Host "EXE file build failed"
           exit 1
         }
       shell: pwsh
       
-    - name: Generate file hashes
-      run: |
-        Write-Host "Generating file hashes for security verification..."
-        python generate_hashes.py
-        
-        # 生成PowerShell哈希验证
-        $md5 = (Get-FileHash -Algorithm MD5 "dist\按键小精灵.exe").Hash
-        $sha256 = (Get-FileHash -Algorithm SHA256 "dist\按键小精灵.exe").Hash
-        
-        Write-Host "MD5: $md5"
-        Write-Host "SHA256: $sha256"
-      shell: pwsh
-      
     - name: Generate version tag
       id: version
       run: |
-        # 生成基于日期和时间的版本号
         $date = Get-Date -Format "yyyy.MM.dd"
         $time = Get-Date -Format "HHmm"
         $version = "v$date-$time"
@@ -110,7 +97,6 @@ jobs:
       shell: pwsh
       
     - name: Create Release
-      id: create_release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.version.outputs.version }}
@@ -122,7 +108,7 @@ jobs:
           **提交**: ${{ github.sha }}
           
           ### 📦 下载文件
-          - `按键小精灵.exe` - 主程序（包含logo.ico图标）
+          - `按键小精灵.exe` - 主程序（带logo.ico图标）
           - 配置文件和资源文件
           - 哈希验证文件
           
@@ -140,11 +126,8 @@ jobs:
           3. 双击运行即可使用
           4. 首次运行会自动创建配置文件
           
-          ### 📝 更新日志
-          最新提交的更改已包含在此版本中。
-          
           ---
-          *此版本由 GitHub Actions 自动构建，完全开源安全*
+          *此版本由 GitHub Actions 自动构建*
         draft: false
         prerelease: false
         files: |
@@ -156,10 +139,10 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: Upload build artifacts (backup)
+    - name: Upload artifacts (backup)
       uses: actions/upload-artifact@v4
       with:
-        name: keymouse-spirit-backup-${{ steps.version.outputs.version }}
+        name: keymouse-spirit-${{ steps.version.outputs.version }}
         path: |
           dist/按键小精灵.exe
           dist/*.png

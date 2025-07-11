@@ -9,6 +9,24 @@
 
 import hashlib
 import os
+import sys
+
+# 设置编码，避免在CI环境中出现编码问题
+if os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+
+def safe_print(message):
+    """安全的打印函数，避免在CI环境中出现编码问题"""
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        # 在编码出错时，使用ASCII编码并忽略无法编码的字符
+        ascii_message = message.encode('ascii', 'ignore').decode('ascii')
+        print(f"[Encoding Issue] {ascii_message}")
 
 def calculate_hash(file_path, hash_algorithm):
     """计算文件哈希值"""
@@ -75,9 +93,9 @@ sha256sum "按键小精灵.exe"
     with open(hash_file_path, 'w', encoding='utf-8') as f:
         f.write(hash_info)
     
-    print(f"✅ 哈希文件已生成: {hash_file_path}")
-    print(f"MD5: {md5_hash}")
-    print(f"SHA256: {sha256_hash}")
+    safe_print(f"Hash file generated: {hash_file_path}")
+    safe_print(f"MD5: {md5_hash}")
+    safe_print(f"SHA256: {sha256_hash}")
     
     return hash_file_path
 
@@ -88,8 +106,8 @@ def main():
     if os.path.exists(exe_path):
         generate_hash_file(exe_path)
     else:
-        print("未找到编译后的exe文件")
-        print("请先运行 python build_exe.py 编译程序")
+        safe_print("EXE file not found")
+        safe_print("Please run 'python build_exe.py' first")
 
 if __name__ == "__main__":
     main()
