@@ -14,6 +14,12 @@
 - **功能**: 构建EXE并在Release时自动上传到Release页面
 - **输出**: Release附件中的可执行文件
 
+## 最新更新 (2025-07-11)
+- ✅ 更新 `actions/upload-artifact` 从 v3 到 v4
+- ✅ 更新 `actions/setup-python` 从 v4 到 v5  
+- ✅ 更新 `softprops/action-gh-release` 从 v1 到 v2
+- ✅ 所有actions现在使用最新稳定版本
+
 ## 使用方法
 
 ### 手动触发构建
