@@ -2,6 +2,22 @@
 
 一个基于图像识别和键盘鼠标操作的游戏自动化工具。
 
+[![GitHub release](https://img.shields.io/github/v/release/yourusername/yourrepo?style=flat-square)](https://github.com/yourusername/yourrepo/releases)
+[![GitHub downloads](https://img.shields.io/github/downloads/yourusername/yourrepo/total?style=flat-square)](https://github.com/yourusername/yourrepo/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/yourusername/yourrepo/auto-release.yml?style=flat-square)](https://github.com/yourusername/yourrepo/actions)
+
+## 🚀 快速下载
+
+### 💾 直接下载 (推荐)
+👉 **[点击下载最新版本](https://github.com/yourusername/yourrepo/releases/latest/download/按键小精灵.exe)**
+
+或访问 **[Releases页面](https://github.com/yourusername/yourrepo/releases)** 查看所有版本
+
+### 📋 系统要求
+- Windows 10/11
+- 无需安装Python或其他依赖
+- 下载即用，绿色软件
+
 ## 功能特性
 
 - 🖼️ **图像识别**: 基于OpenCV的模板匹配，支持自定义置信度
@@ -12,9 +28,18 @@
 - 💾 **配置管理**: 保存和加载自动化方案
 - 🎯 **可视化编辑**: 直观的GUI界面，所见即所得
 
-## 快速开始
+## 🎮 使用方法
 
-### 1. 安装依赖
+### 直接运行 (推荐)
+1. [下载最新版本](https://github.com/yourusername/yourrepo/releases/latest)
+2. 双击 `按键小精灵.exe` 运行
+3. 无需安装，立即使用！
+
+### 开发者安装
+
+### 开发者安装
+
+#### 1. 安装依赖
 ```bash
 # 自动安装
 双击运行 "安装依赖.bat"

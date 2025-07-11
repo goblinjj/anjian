@@ -2,6 +2,33 @@
 
 本项目配置了GitHub Actions来自动构建EXE文件。
 
+## 最新更新 (2025-07-11)
+- ✅ 更新 `actions/upload-artifact` 从 v3 到 v4
+- ✅ 更新 `actions/setup-python` 从 v4 到 v5  
+- ✅ 更新 `softprops/action-gh-release` 从 v1 到 v2
+- ✅ 所有actions现在使用最新稳定版本
+- ✅ 修复了编码问题
+- 🚀 添加了自动Release发布功能
+
+## 🎯 Release发布功能
+
+### 自动发布 (auto-release.yml)
+- **触发**: 推送到main/master分支
+- **结果**: 自动创建Release并上传exe文件
+- **版本**: 自动生成 (v2025.07.11-1430)
+
+### 手动发布 (manual-release.yml)  
+- **触发**: Git标签 或 手动运行
+- **结果**: 创建指定版本的Release
+- **控制**: 完全手动控制版本号和说明
+
+## 📦 用户下载体验
+
+现在用户可以:
+1. 🔗 **直接下载**: 项目首页显示最新版本下载链接
+2. 📋 **查看历史**: Releases页面显示所有版本  
+3. 🚀 **一键运行**: 下载exe直接运行，无需安装
+
 ## 工作流程
 
 ### 1. 自动构建 (build-exe.yml)
@@ -13,45 +40,3 @@
 - **触发条件**: 创建Release、推送、Pull Request、手动触发
 - **功能**: 构建EXE并在Release时自动上传到Release页面
 - **输出**: Release附件中的可执行文件
-
-## 最新更新 (2025-07-11)
-- ✅ 更新 `actions/upload-artifact` 从 v3 到 v4
-- ✅ 更新 `actions/setup-python` 从 v4 到 v5  
-- ✅ 更新 `softprops/action-gh-release` 从 v1 到 v2
-- ✅ 所有actions现在使用最新稳定版本
-
-## 使用方法
-
-### 手动触发构建
-1. 进入GitHub仓库的 "Actions" 页面
-2. 选择 "Build EXE" 或 "Build and Release" 工作流
-3. 点击 "Run workflow" 按钮
-4. 构建完成后在 "Artifacts" 中下载EXE文件
-
-### 自动构建
-- 每次推送代码到主分支时自动触发构建
-- 创建Pull Request时会进行构建测试
-
-### 创建Release
-1. 在GitHub仓库中点击 "Releases"
-2. 点击 "Create a new release"
-3. 创建标签 (例如: v1.0.0)
-4. 填写Release信息
-5. 发布后会自动构建并上传EXE文件到Release
-
-## 构建环境
-- **操作系统**: Windows Latest
-- **Python版本**: 3.11
-- **构建工具**: PyInstaller
-- **图标**: logo.ico
-
-## 输出文件
-构建完成后会生成以下文件：
-- `按键小精灵.exe` - 主程序
-- `*.png` - 图片资源文件
-- `*.json` - 配置文件
-
-## 注意事项
-1. 确保 `logo.ico` 文件存在于根目录
-2. 确保所有依赖都在 `requirements.txt` 中列出
-3. 构建失败时检查Actions日志获取详细错误信息
