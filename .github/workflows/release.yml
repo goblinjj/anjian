@@ -48,24 +48,26 @@ jobs:
       
     - name: Build EXE with PyInstaller
       run: |
-        Write-Host "开始构建EXE文件..."
+        Write-Host "Starting EXE build..."
         python build_exe.py
       shell: pwsh
       env:
         CI: true
         GITHUB_ACTIONS: true
+        PYTHONIOENCODING: utf-8
+        PYTHONUTF8: 1
         
     - name: Verify build output
       run: |
         if (Test-Path "dist\按键小精灵.exe") {
-          Write-Host "✓ EXE文件构建成功"
-          Write-Host "文件大小: $((Get-Item 'dist\按键小精灵.exe').Length / 1MB) MB"
+          Write-Host "EXE file built successfully"
+          Write-Host "File size: $((Get-Item 'dist\按键小精灵.exe').Length / 1MB) MB"
         } else {
-          Write-Host "✗ EXE文件构建失败"
+          Write-Host "EXE file build failed"
           exit 1
         }
         
-        Write-Host "dist目录内容:"
+        Write-Host "Contents of dist directory:"
         Get-ChildItem "dist" -Recurse | Format-Table Name, Length, LastWriteTime
       shell: pwsh
       

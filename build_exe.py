@@ -12,20 +12,29 @@ import subprocess
 import shutil
 import glob
 
+# 设置环境编码，避免在CI环境中出现编码问题
+if os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    # 在CI环境中重定向标准输出编码
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
+
 def install_pyinstaller():
     """安装PyInstaller"""
     try:
         import PyInstaller
-        print("PyInstaller 已安装")
+        safe_print("PyInstaller is already installed")
         return True
     except ImportError:
-        print("正在安装 PyInstaller...")
+        safe_print("Installing PyInstaller...")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
-            print("PyInstaller 安装成功")
+            safe_print("PyInstaller installed successfully")
             return True
         except subprocess.CalledProcessError:
-            print("PyInstaller 安装失败")
+            safe_print("Failed to install PyInstaller")
             return False
 
 def create_spec_file():
@@ -123,12 +132,12 @@ exe = EXE(
     with open('automation_gui.spec', 'w', encoding='utf-8') as f:
         f.write(spec_content)
     
-    print("已创建 automation_gui.spec 文件")
+    safe_print("Created automation_gui.spec file")
 
 def build_exe():
     """构建exe文件"""
     try:
-        print("正在构建exe文件...")
+        safe_print("Building exe file...")
         
         # 先尝试简化的打包方式
         simple_cmd = [
@@ -165,8 +174,8 @@ def build_exe():
         result = subprocess.run(simple_cmd, capture_output=True, text=True)
         
         if result.returncode == 0:
-            print("构建成功！")
-            print("exe文件位置：dist/按键小精灵.exe")
+            safe_print("Build successful!")
+            safe_print("exe file location: dist/按键小精灵.exe")
             
             # 复制图片文件和配置文件到dist目录
             dist_dir = os.path.join("dist")
@@ -178,27 +187,27 @@ def build_exe():
                     for file in files:
                         try:
                             shutil.copy2(file, dist_dir)
-                            print(f"已复制 {file} 到 dist 目录")
+                            safe_print(f"Copied {file} to dist directory")
                         except Exception as e:
-                            print(f"复制文件 {file} 失败: {e}")
+                            safe_print(f"Failed to copy file {file}: {e}")
                 
                 # 复制配置文件
                 for config_file in ['default.json', '示例配置.json']:
                     if os.path.exists(config_file):
                         try:
                             shutil.copy2(config_file, dist_dir)
-                            print(f"已复制 {config_file} 到 dist 目录")
+                            safe_print(f"Copied config file {config_file} to dist directory")
                         except Exception as e:
-                            print(f"复制配置文件 {config_file} 失败: {e}")
+                            safe_print(f"Failed to copy config file {config_file}: {e}")
             
             return True
         else:
-            print("构建失败：")
-            print(result.stderr)
+            safe_print("Build failed:")
+            safe_print(result.stderr)
             return False
             
     except Exception as e:
-        print(f"构建过程中出错：{str(e)}")
+        safe_print(f"Error during build process: {str(e)}")
         return False
 
 def clean_build_files():
@@ -209,23 +218,32 @@ def clean_build_files():
     for dir_name in dirs_to_remove:
         if os.path.exists(dir_name):
             shutil.rmtree(dir_name)
-            print(f"已清理 {dir_name} 目录")
+            safe_print(f"Cleaned {dir_name} directory")
     
     for file_name in files_to_remove:
         if os.path.exists(file_name):
             os.remove(file_name)
-            print(f"已清理 {file_name} 文件")
+            safe_print(f"Cleaned {file_name} file")
+
+def safe_print(message):
+    """安全的打印函数，避免在CI环境中出现编码问题"""
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        # 在编码出错时，使用ASCII编码并忽略无法编码的字符
+        ascii_message = message.encode('ascii', 'ignore').decode('ascii')
+        print(f"[Encoding Issue] {ascii_message}")
 
 def main():
     """主函数"""
-    print("按键小精灵打包脚本")
-    print("=" * 50)
+    safe_print("Keymouse Spirit Build Script")
+    safe_print("=" * 50)
     
     # 检查当前目录
     required_files = ['main_gui.py', 'start_gui.py', 'models.py', 'file_manager.py']
     for file in required_files:
         if not os.path.exists(file):
-            print(f"错误：找不到文件 {file}")
+            safe_print(f"Error: Missing file {file}")
             return
     
     # 安装PyInstaller
@@ -237,30 +255,30 @@ def main():
     
     # 构建exe
     if build_exe():
-        print("\n构建完成！")
-        print("你可以在 dist 目录中找到可执行文件")
+        safe_print("\nBuild completed successfully!")
+        safe_print("You can find the executable file in the dist directory")
         
         # 检查是否在CI环境中（GitHub Actions）
         ci_env = os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS')
         
         if ci_env:
             # 在CI环境中自动清理构建文件
-            print("在CI环境中，自动清理构建文件")
+            safe_print("In CI environment, automatically cleaning build files")
             clean_build_files()
         else:
             # 询问是否清理构建文件
             while True:
-                choice = input("\n是否清理构建文件？(y/n): ").lower()
+                choice = input("\nClean build files? (y/n): ").lower()
                 if choice in ['y', 'yes', '是']:
                     clean_build_files()
                     break
                 elif choice in ['n', 'no', '否']:
-                    print("保留构建文件")
+                    safe_print("Keeping build files")
                     break
                 else:
-                    print("请输入 y 或 n")
+                    safe_print("Please enter y or n")
     else:
-        print("构建失败")
+        safe_print("Build failed")
         sys.exit(1)  # 在构建失败时退出并返回错误代码
 
 if __name__ == "__main__":
