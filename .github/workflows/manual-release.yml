@@ -16,6 +16,12 @@ on:
         default: false
         type: boolean
 
+# 添加权限配置，允许创建Release
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
 jobs:
   manual-release:
     runs-on: windows-latest

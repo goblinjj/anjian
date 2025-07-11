@@ -9,6 +9,11 @@ on:
     types: [created]
   workflow_dispatch:
 
+# 添加权限配置
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build-windows:
     runs-on: windows-latest

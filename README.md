@@ -2,16 +2,16 @@
 
 一个基于图像识别和键盘鼠标操作的游戏自动化工具。
 
-[![GitHub release](https://img.shields.io/github/v/release/yourusername/yourrepo?style=flat-square)](https://github.com/yourusername/yourrepo/releases)
-[![GitHub downloads](https://img.shields.io/github/downloads/yourusername/yourrepo/total?style=flat-square)](https://github.com/yourusername/yourrepo/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/yourusername/yourrepo/auto-release.yml?style=flat-square)](https://github.com/yourusername/yourrepo/actions)
+[![GitHub release](https://img.shields.io/github/v/release/goblinjj/anjian?style=flat-square)](https://github.com/goblinjj/anjian/releases)
+[![GitHub downloads](https://img.shields.io/github/downloads/goblinjj/anjian/total?style=flat-square)](https://github.com/goblinjj/anjian/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/goblinjj/anjian/auto-release.yml?style=flat-square)](https://github.com/goblinjj/anjian/actions)
 
 ## 🚀 快速下载
 
 ### 💾 直接下载 (推荐)
-👉 **[点击下载最新版本](https://github.com/yourusername/yourrepo/releases/latest/download/按键小精灵.exe)**
+👉 **[点击下载最新版本](https://github.com/goblinjj/anjian/releases/latest/download/按键小精灵.exe)**
 
-或访问 **[Releases页面](https://github.com/yourusername/yourrepo/releases)** 查看所有版本
+或访问 **[Releases页面](https://github.com/goblinjj/anjian/releases)** 查看所有版本
 
 ### 📋 系统要求
 - Windows 10/11
@@ -31,7 +31,7 @@
 ## 🎮 使用方法
 
 ### 直接运行 (推荐)
-1. [下载最新版本](https://github.com/yourusername/yourrepo/releases/latest)
+1. [下载最新版本](https://github.com/goblinjj/anjian/releases/latest)
 2. 双击 `按键小精灵.exe` 运行
 3. 无需安装，立即使用！
 
