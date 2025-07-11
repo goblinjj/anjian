@@ -6,7 +6,10 @@ on:
     paths-ignore:
       - '**.md'
       - '.gitignore'
-      - 'docs/**'
+      -          ### 🔒 文件验证
+          程序包含哈希验证文件，可验证文件完整性
+          
+          > 💡 如果Windows Defender误报，请查看 [解决指南](https://github.com/goblinjj/anjian/blob/main/WINDOWS_DEFENDER_GUIDE.md)s/**'
   workflow_dispatch:
 
 # 添加权限配置，允许创建Release
@@ -84,6 +87,23 @@ jobs:
         }
       shell: pwsh
       
+    - name: Generate file hashes
+      run: |
+        Write-Host "Generating file hashes for security verification..."
+        python generate_hashes.py
+        
+        # 生成PowerShell哈希验证
+        $md5 = (Get-FileHash -Algorithm MD5 "dist\按键小精灵.exe").Hash
+        $sha256 = (Get-FileHash -Algorithm SHA256 "dist\按键小精灵.exe").Hash
+        
+        Write-Host "MD5: $md5"
+        Write-Host "SHA256: $sha256"
+        
+        # 保存哈希到环境变量供Release使用
+        echo "FILE_MD5=$md5" >> $env:GITHUB_ENV
+        echo "FILE_SHA256=$sha256" >> $env:GITHUB_ENV
+      shell: pwsh
+      
     - name: Generate version tag
       id: version
       run: |
@@ -112,11 +132,19 @@ jobs:
           ### 📦 下载文件
           - `按键小精灵.exe` - 主程序（包含logo.ico图标）
           - 配置文件和资源文件
+          - 哈希验证文件
           
-          ### 🚀 使用方法
+          ### � 文件验证
+          **MD5**: `${{ env.FILE_MD5 }}`  
+          **SHA256**: `${{ env.FILE_SHA256 }}`
+          
+          > 💡 如果Windows Defender误报，请查看 [解决指南](https://github.com/goblinjj/anjian/blob/main/WINDOWS_DEFENDER_GUIDE.md)
+          
+          ### �🚀 使用方法
           1. 下载 `按键小精灵.exe`
-          2. 双击运行即可使用
-          3. 首次运行会自动创建配置文件
+          2. 添加到Windows Defender排除列表（如果需要）
+          3. 双击运行即可使用
+          4. 首次运行会自动创建配置文件
           
           ### 📝 更新日志
           最新提交的更改已包含在此版本中。
@@ -129,6 +157,7 @@ jobs:
           dist/按键小精灵.exe
           dist/*.png
           dist/*.json
+          dist/*_hashes.txt
         generate_release_notes: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

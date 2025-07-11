@@ -139,15 +139,30 @@ def build_exe():
     try:
         safe_print("Building exe file...")
         
-        # 先尝试简化的打包方式
+        # 检查版本信息文件是否存在
+        version_file = "version_info.txt"
+        version_param = []
+        if os.path.exists(version_file):
+            version_param = ["--version-file", version_file]
+            safe_print("Found version info file, will include version information")
+        
+        # 优化的打包参数，减少误报
         simple_cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
-            "--windowed", 
+            "--windowed",
             "--name=按键小精灵",
             "--icon=logo.ico",
+            # 添加版本信息
+            *version_param,
+            # 优化参数，减少误报
+            "--noupx",  # 不使用UPX压缩，减少误报
+            "--clean",  # 清理临时文件
+            "--noconfirm",  # 自动确认覆盖
+            # 添加数据文件
             "--add-data=*.png;.",
             "--add-data=*.json;.",
+            # 隐藏导入
             "--hidden-import=PIL._tkinter_finder",
             "--hidden-import=cv2",
             "--hidden-import=numpy", 
