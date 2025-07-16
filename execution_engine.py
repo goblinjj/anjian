@@ -74,11 +74,11 @@ class ExecutionEngine:
                     break
                 
                 # 循环间延迟，分解为小段以便及时响应停止
-                if loop_mode:
-                    sleep_time = loop_interval
-                    while sleep_time > 0 and not self.should_stop:
-                        time.sleep(min(0.1, sleep_time))
-                        sleep_time -= 0.1
+               # if loop_mode:
+                 #   sleep_time = loop_interval
+                  #  while sleep_time > 0 and not self.should_stop:
+                  #      time.sleep(min(0.1, sleep_time))
+                   #     sleep_time -= 0.1
         
         except Exception as e:
             self.update_status(f"执行出错: {str(e)}")
@@ -118,13 +118,13 @@ class ExecutionEngine:
                 pyautogui.mouseDown(x, y, button='left')
                 time.sleep(0.05)
                 pyautogui.mouseUp(x, y, button='left')
-                time.sleep(0.05)
+                #time.sleep(0.05)
             elif button == 'right':
                 # 延时0.05按下，延时0.05弹起
                 pyautogui.mouseDown(x, y, button='right')
                 time.sleep(0.05)
                 pyautogui.mouseUp(x, y, button='right')
-                time.sleep(0.05)
+                #time.sleep(0.05)
             elif button == 'middle':
                 pyautogui.middleClick(x, y)
             
