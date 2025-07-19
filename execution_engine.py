@@ -23,6 +23,56 @@ class ExecutionEngine:
         self.is_running = False
         self.should_stop = False
         self.saved_region = None  # 保存的搜索区域
+    
+    def locate_on_screen_chinese(self, image_path, region=None, confidence=0.8):
+        """支持中文路径的屏幕图片搜索"""
+        try:
+            # 使用PIL和numpy读取图片，支持中文路径
+            template = Image.open(image_path)
+            template = np.array(template)
+            
+            # 如果是RGBA，转换为RGB
+            if template.shape[2] == 4:
+                template = cv2.cvtColor(template, cv2.COLOR_RGBA2RGB)
+            # 如果是RGB，转换为BGR（OpenCV格式）
+            elif template.shape[2] == 3:
+                template = cv2.cvtColor(template, cv2.COLOR_RGB2BGR)
+            
+            # 截取屏幕
+            screenshot = pyautogui.screenshot(region=region)
+            screenshot = np.array(screenshot)
+            screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+            
+            # 进行模板匹配
+            result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+            
+            # 检查匹配度
+            if max_val >= confidence:
+                # 计算匹配位置
+                h, w = template.shape[:2]
+                left = max_loc[0]
+                top = max_loc[1]
+                
+                # 如果指定了搜索区域，需要调整坐标
+                if region:
+                    left += region[0]
+                    top += region[1]
+                
+                # 返回类似pyautogui.Box的对象
+                class MatchResult:
+                    def __init__(self, left, top, width, height):
+                        self.left = left
+                        self.top = top
+                        self.width = width
+                        self.height = height
+                
+                return MatchResult(left, top, w, h)
+            
+            return None
+        except Exception as e:
+            print(f"图片搜索错误: {str(e)}")
+            return None
         
     def execute_steps(self, steps, loop_mode=False, loop_interval=0.5):
         """执行步骤列表"""
@@ -203,17 +253,17 @@ class ExecutionEngine:
                 break
             
             try:
-                # 搜索图片
+                # 搜索图片 - 使用支持中文路径的方法
                 if search_region:
-                    location = pyautogui.locateOnScreen(image_path, region=search_region, confidence=confidence)
+                    location = self.locate_on_screen_chinese(image_path, region=search_region, confidence=confidence)
                 else:
-                    location = pyautogui.locateOnScreen(image_path, confidence=confidence)
+                    location = self.locate_on_screen_chinese(image_path, confidence=confidence)
                 
                 if location:
                     found_location = location
                     break
                 
-            except pyautogui.ImageNotFoundException:
+            except Exception:
                 pass
             
             time.sleep(0.1)
@@ -245,9 +295,11 @@ class ExecutionEngine:
         # 执行动作
         if action == 'left_click':
             pyautogui.mouseDown(click_x, click_y, button='left')
+            time.sleep(0.05)
             pyautogui.mouseUp(click_x, click_y, button='left')
         elif action == 'right_click':
             pyautogui.mouseDown(click_x, click_y, button='right')
+            time.sleep(0.05)
             pyautogui.mouseUp(click_x, click_y, button='right')
         elif action == 'double_click':
             pyautogui.doubleClick(click_x, click_y)
@@ -270,8 +322,8 @@ class ExecutionEngine:
         )
         
         try:
-            # 在指定区域搜索
-            location = pyautogui.locateOnScreen(target_image, region=search_region, confidence=confidence)
+            # 在指定区域搜索 - 使用支持中文路径的方法
+            location = self.locate_on_screen_chinese(target_image, region=search_region, confidence=confidence)
             if location:
                 return (location.left + location.width // 2, location.top + location.height // 2)
         except:
@@ -299,7 +351,8 @@ class ExecutionEngine:
                     break
                 
                 try:
-                    location = pyautogui.locateOnScreen(wait_image, confidence=0.8)
+                    # 使用支持中文路径的方法
+                    location = self.locate_on_screen_chinese(wait_image, confidence=0.8)
                     if location:
                         break
                 except:

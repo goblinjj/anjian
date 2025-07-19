@@ -184,6 +184,7 @@ class EditPageManager:
         ttk.Radiobutton(wait_frame, text="无动作", variable=self.gui.after_found_var, value="none").grid(row=1, column=1, sticky=tk.W, padx=5)
         ttk.Radiobutton(wait_frame, text="左键点击", variable=self.gui.after_found_var, value="left_click").grid(row=1, column=2, sticky=tk.W, padx=5)
         ttk.Radiobutton(wait_frame, text="右键点击", variable=self.gui.after_found_var, value="right_click").grid(row=1, column=3, sticky=tk.W, padx=5)
+        ttk.Radiobutton(wait_frame, text="双击", variable=self.gui.after_found_var, value="double_click").grid(row=2, column=1, sticky=tk.W, padx=5)
     
     def create_wait_page(self):
         """创建等待编辑页面"""

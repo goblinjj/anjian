@@ -321,6 +321,7 @@ class AutomationGUI:
             self.confidence_var.set(str(step.params.get('confidence', 0.8)))
             self.search_offset_x_var.set(str(step.params.get('offset_x', 0)))
             self.search_offset_y_var.set(str(step.params.get('offset_y', 0)))
+            self.search_timeout_var.set(str(step.params.get('timeout', 5)))
             self.after_found_var.set(step.params.get('action', 'none'))
             
             # 加载区域相关参数
@@ -358,6 +359,7 @@ class AutomationGUI:
             self.confidence_var.set("0.8")
             self.search_offset_x_var.set("0")
             self.search_offset_y_var.set("0")
+            self.search_timeout_var.set("5")
             self.after_found_var.set("none")
             self.search_region_var.set("full")
             self.region_x1_var.set("0")
@@ -385,9 +387,8 @@ class AutomationGUI:
             filetypes=[("图片文件", "*.png *.jpg *.jpeg *.bmp *.gif"), ("所有文件", "*.*")]
         )
         if filename:
-            # 只使用文件名，不使用完整路径
-            basename = os.path.basename(filename)
-            self.search_image_var.set(basename)
+            # 使用完整路径以支持中文路径
+            self.search_image_var.set(filename)
 
     def screenshot_get_search_image(self):
         """通过截图获取搜索图片"""
