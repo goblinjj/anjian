@@ -19,9 +19,6 @@ from ui_editors import EditPageManager, ScreenshotManager
 from file_manager import ConfigManager
 from hotkey_manager import HotkeyManager
 
-# 禁用pyautogui的故障保护
-pyautogui.FAILSAFE = False
-
 class AutomationGUI:
     def __init__(self, root):
         self.root = root

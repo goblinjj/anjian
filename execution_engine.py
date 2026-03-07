@@ -15,6 +15,14 @@ import numpy as np
 from PIL import Image
 import os
 
+class MatchResult:
+    """模板匹配结果"""
+    def __init__(self, left, top, width, height):
+        self.left = left
+        self.top = top
+        self.width = width
+        self.height = height
+
 class ExecutionEngine:
     """执行引擎类"""
     
@@ -25,50 +33,66 @@ class ExecutionEngine:
         self.saved_region = None  # 保存的搜索区域
     
     def locate_on_screen_chinese(self, image_path, region=None, confidence=0.8):
-        """支持中文路径的屏幕图片搜索"""
+        """支持中文路径的屏幕图片搜索，支持多尺度匹配以适应不同分辨率"""
         try:
             # 使用PIL和numpy读取图片，支持中文路径
             template = Image.open(image_path)
             template = np.array(template)
-            
-            # 如果是RGBA，转换为RGB
-            if template.shape[2] == 4:
-                template = cv2.cvtColor(template, cv2.COLOR_RGBA2RGB)
-            # 如果是RGB，转换为BGR（OpenCV格式）
+
+            # 处理不同通道数
+            if len(template.shape) == 2:
+                template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
+            elif template.shape[2] == 4:
+                template = cv2.cvtColor(template, cv2.COLOR_RGBA2BGR)
             elif template.shape[2] == 3:
                 template = cv2.cvtColor(template, cv2.COLOR_RGB2BGR)
-            
+
             # 截取屏幕
             screenshot = pyautogui.screenshot(region=region)
             screenshot = np.array(screenshot)
             screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
-            
-            # 进行模板匹配
-            result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            
-            # 检查匹配度
-            if max_val >= confidence:
-                # 计算匹配位置
-                h, w = template.shape[:2]
-                left = max_loc[0]
-                top = max_loc[1]
-                
-                # 如果指定了搜索区域，需要调整坐标
+
+            # 多尺度模板匹配：从0.5x到2.0x，步长约5%
+            best_val = -1
+            best_loc = None
+            best_w = 0
+            best_h = 0
+
+            th, tw = template.shape[:2]
+            sh, sw = screenshot.shape[:2]
+
+            for scale in [s / 100.0 for s in range(50, 205, 5)]:
+                new_w = int(tw * scale)
+                new_h = int(th * scale)
+
+                # 跳过比截图还大的尺寸或太小的尺寸
+                if new_w > sw or new_h > sh or new_w < 5 or new_h < 5:
+                    continue
+
+                scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
+                result = cv2.matchTemplate(screenshot, scaled, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+                if max_val > best_val:
+                    best_val = max_val
+                    best_loc = max_loc
+                    best_w = new_w
+                    best_h = new_h
+
+                # 找到高置信度匹配就提前退出
+                if best_val >= min(confidence + 0.1, 0.98):
+                    break
+
+            if best_val >= confidence and best_loc is not None:
+                left = best_loc[0]
+                top = best_loc[1]
+
                 if region:
                     left += region[0]
                     top += region[1]
-                
-                # 返回类似pyautogui.Box的对象
-                class MatchResult:
-                    def __init__(self, left, top, width, height):
-                        self.left = left
-                        self.top = top
-                        self.width = width
-                        self.height = height
-                
-                return MatchResult(left, top, w, h)
-            
+
+                return MatchResult(left, top, best_w, best_h)
+
             return None
         except Exception as e:
             print(f"图片搜索错误: {str(e)}")
@@ -124,11 +148,11 @@ class ExecutionEngine:
                     break
                 
                 # 循环间延迟，分解为小段以便及时响应停止
-               # if loop_mode:
-                 #   sleep_time = loop_interval
-                  #  while sleep_time > 0 and not self.should_stop:
-                  #      time.sleep(min(0.1, sleep_time))
-                   #     sleep_time -= 0.1
+                if loop_mode:
+                    sleep_time = loop_interval
+                    while sleep_time > 0 and not self.should_stop:
+                        time.sleep(min(0.1, sleep_time))
+                        sleep_time -= 0.1
         
         except Exception as e:
             self.update_status(f"执行出错: {str(e)}")
@@ -312,14 +336,13 @@ class ExecutionEngine:
         # 截取屏幕
         screenshot = pyautogui.screenshot()
         
-        # 搜索区域：从起始位置向上搜索
+        # 搜索区域：从起始位置向上搜索 (left, top, width, height)
         search_height = 200  # 向上搜索200像素
-        search_region = (
-            max(0, start_x - 100),  # 左边界
-            max(0, start_y - search_height),  # 上边界
-            min(screenshot.width, start_x + 100),  # 右边界
-            start_y  # 下边界
-        )
+        region_left = max(0, start_x - 100)
+        region_top = max(0, start_y - search_height)
+        region_width = min(screenshot.width, start_x + 100) - region_left
+        region_height = start_y - region_top
+        search_region = (region_left, region_top, region_width, region_height)
         
         try:
             # 在指定区域搜索 - 使用支持中文路径的方法
@@ -339,8 +362,11 @@ class ExecutionEngine:
         wait_image = params.get('wait_image', '')
         
         if wait_type == 'time':
-            # 固定时间等待
-            time.sleep(wait_time)
+            # 固定时间等待，分段sleep以便响应停止
+            remaining = wait_time
+            while remaining > 0 and not self.should_stop:
+                time.sleep(min(0.1, remaining))
+                remaining -= 0.1
         elif wait_type == 'image' and wait_image:
             # 等待图片出现
             start_time = time.time()
