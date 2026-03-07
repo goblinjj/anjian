@@ -52,36 +52,48 @@ class ExecutionEngine:
             screenshot = np.array(screenshot)
             screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
 
-            # 多尺度模板匹配：从0.5x到2.0x，步长约5%
+            th, tw = template.shape[:2]
+            sh, sw = screenshot.shape[:2]
+
             best_val = -1
             best_loc = None
             best_w = 0
             best_h = 0
 
-            th, tw = template.shape[:2]
-            sh, sw = screenshot.shape[:2]
-
-            for scale in [s / 100.0 for s in range(50, 205, 5)]:
-                new_w = int(tw * scale)
-                new_h = int(th * scale)
-
-                # 跳过比截图还大的尺寸或太小的尺寸
-                if new_w > sw or new_h > sh or new_w < 5 or new_h < 5:
-                    continue
-
-                scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
-                result = cv2.matchTemplate(screenshot, scaled, cv2.TM_CCOEFF_NORMED)
+            # 优先尝试原始尺寸（1x），大多数场景分辨率固定
+            if tw <= sw and th <= sh:
+                result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
-
-                if max_val > best_val:
+                if max_val >= confidence:
                     best_val = max_val
                     best_loc = max_loc
-                    best_w = new_w
-                    best_h = new_h
+                    best_w = tw
+                    best_h = th
 
-                # 找到高置信度匹配就提前退出
-                if best_val >= min(confidence + 0.1, 0.98):
-                    break
+            # 原始尺寸未匹配时，再做多尺度搜索
+            if best_val < confidence:
+                for scale in [s / 100.0 for s in range(50, 205, 5)]:
+                    if scale == 1.0:
+                        continue  # 已尝试过
+                    new_w = int(tw * scale)
+                    new_h = int(th * scale)
+
+                    if new_w > sw or new_h > sh or new_w < 5 or new_h < 5:
+                        continue
+
+                    scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
+                    result = cv2.matchTemplate(screenshot, scaled, cv2.TM_CCOEFF_NORMED)
+                    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+                    if max_val > best_val:
+                        best_val = max_val
+                        best_loc = max_loc
+                        best_w = new_w
+                        best_h = new_h
+
+                    # 找到高置信度匹配就提前退出
+                    if best_val >= min(confidence + 0.1, 0.98):
+                        break
 
             if best_val >= confidence and best_loc is not None:
                 left = best_loc[0]
@@ -214,7 +226,8 @@ class ExecutionEngine:
         duration = params.get('duration', 0.05)
         
         if key_type == 'text' and text:
-            pyautogui.typewrite(text, interval=0.05)
+            # 使用 keyboard.write 支持中文等非 ASCII 字符
+            keyboard.write(text, delay=0.05)
         elif key_type == 'combo':
             # 组合键处理
             keys = key.split('+')
@@ -349,7 +362,7 @@ class ExecutionEngine:
             location = self.locate_on_screen_chinese(target_image, region=search_region, confidence=confidence)
             if location:
                 return (location.left + location.width // 2, location.top + location.height // 2)
-        except:
+        except Exception:
             pass
         
         return None
@@ -381,7 +394,7 @@ class ExecutionEngine:
                     location = self.locate_on_screen_chinese(wait_image, confidence=0.8)
                     if location:
                         break
-                except:
+                except Exception:
                     pass
                 
                 time.sleep(0.1)

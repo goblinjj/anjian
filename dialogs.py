@@ -86,7 +86,14 @@ class ScreenshotDialog:
         """创建对话框"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("截图选择")
-        self.dialog.state('zoomed')  # 最大化窗口
+        # 跨平台最大化窗口
+        import sys
+        if sys.platform == 'win32':
+            self.dialog.state('zoomed')
+        else:
+            screen_w = self.dialog.winfo_screenwidth()
+            screen_h = self.dialog.winfo_screenheight()
+            self.dialog.geometry(f"{screen_w}x{screen_h}+0+0")
         self.dialog.attributes('-topmost', True)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
@@ -400,14 +407,17 @@ class HotkeySettingsDialog:
             detected_key = key_name
             detect_window.destroy()
         
-        # 开始监听
-        keyboard.on_press(on_key_event)
-        
+        # 开始监听（只记录此次 hook，避免影响其他模块）
+        hook = keyboard.on_press(on_key_event)
+
         # 等待窗口关闭
         self.dialog.wait_window(detect_window)
-        
-        # 停止监听
-        keyboard.unhook_all()
+
+        # 只取消此次监听
+        try:
+            keyboard.unhook(hook)
+        except Exception:
+            pass
         
         # 设置检测到的按键
         if detected_key:

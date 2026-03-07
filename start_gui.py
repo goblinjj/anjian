@@ -59,20 +59,27 @@ def main():
         return
     
     # 导入主程序
+    root = None
     try:
         from main_gui import AutomationGUI
-        
+
         # 创建主窗口
         root = tk.Tk()
         app = AutomationGUI(root)
-        
+
         # 启动GUI
         root.mainloop()
-        
+
     except Exception as e:
-        root = tk.Tk()
-        root.withdraw()
+        if root:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        error_root = tk.Tk()
+        error_root.withdraw()
         messagebox.showerror("启动错误", f"程序启动失败:\n{str(e)}")
+        error_root.destroy()
 
 if __name__ == "__main__":
     main()

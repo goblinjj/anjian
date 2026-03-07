@@ -209,11 +209,15 @@ class EditPageManager:
         # 图片等待设置
         image_wait_frame = ttk.LabelFrame(frame, text="图片等待设置")
         image_wait_frame.grid(row=2, column=0, columnspan=4, sticky=(tk.W, tk.E), padx=5, pady=5)
-        
+
         ttk.Label(image_wait_frame, text="等待图片:").grid(row=0, column=0, padx=5, pady=5)
         self.gui.wait_image_var = tk.StringVar()
         ttk.Entry(image_wait_frame, textvariable=self.gui.wait_image_var, width=30).grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(image_wait_frame, text="选择", command=self.gui.select_wait_image).grid(row=0, column=2, padx=5, pady=5)
+
+        ttk.Label(image_wait_frame, text="超时时间(秒):").grid(row=1, column=0, padx=5, pady=5)
+        self.gui.wait_timeout_var = tk.StringVar(value="10")
+        ttk.Entry(image_wait_frame, textvariable=self.gui.wait_timeout_var, width=10).grid(row=1, column=1, padx=5, pady=5)
 
 class ScreenshotManager:
     """截图管理器"""

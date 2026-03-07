@@ -14,14 +14,15 @@ from models import ActionStep
 
 class ConfigManager:
     """配置管理器"""
-    
+
     def __init__(self, gui_instance):
         self.gui = gui_instance
         self.current_config_file = None
+        self._saved_state = None
     
     def new_config(self):
         """新建配置"""
-        if self.gui.steps:
+        if self.is_modified():
             result = messagebox.askyesnocancel("新建配置", "当前配置未保存，是否保存？")
             if result is True:
                 if not self.save_config():
@@ -32,6 +33,7 @@ class ConfigManager:
         self.gui.steps = []
         self.current_config_file = None
         self.gui.refresh_step_list()
+        self._mark_saved()
         self.gui.update_status("已创建新配置")
     
     def open_config(self):
@@ -81,15 +83,26 @@ class ConfigManager:
                 return False
         return False
     
+    def _get_current_state(self):
+        """获取当前步骤的序列化状态"""
+        return json.dumps([step.to_dict() for step in self.gui.steps], ensure_ascii=False)
+
+    def _mark_saved(self):
+        """标记当前状态为已保存"""
+        self._saved_state = self._get_current_state()
+
     def save_to_file(self, filename):
         """保存到文件"""
         config = {
             "version": "1.0",
+            "created_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "description": "",
             "steps": [step.to_dict() for step in self.gui.steps]
         }
-        
+
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
+        self._mark_saved()
     
     def load_from_file(self, filename):
         """从文件加载"""
@@ -100,8 +113,9 @@ class ConfigManager:
         for step_data in config.get('steps', []):
             step = ActionStep.from_dict(step_data)
             self.gui.steps.append(step)
-        
+
         self.gui.refresh_step_list()
+        self._mark_saved()
     
     def load_default_config(self):
         """加载默认配置"""
@@ -121,7 +135,8 @@ class ConfigManager:
         # 如果default.json不存在或加载失败，创建空配置
         self.gui.steps = []
         self.gui.refresh_step_list()
-        
+        self._mark_saved()
+
         # 创建一个空的default.json文件
         try:
             self.create_empty_default_config(default_config_path)
@@ -182,5 +197,4 @@ class ConfigManager:
     
     def is_modified(self):
         """检查是否已修改"""
-        # 这里可以实现更复杂的修改检测逻辑
-        return True  # 简化实现，总是返回True
+        return self._get_current_state() != self._saved_state

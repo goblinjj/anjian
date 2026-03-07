@@ -40,7 +40,7 @@ class AutomationGUI:
         # 初始化管理器
         self.config_manager = ConfigManager(self)
         self.hotkey_manager = HotkeyManager(self)
-        self.automation_runner = AutomationRunner(self.update_status)
+        self.automation_runner = AutomationRunner(self._thread_safe_status)
         
         # 创建界面
         self.create_widgets()
@@ -99,13 +99,10 @@ class AutomationGUI:
         # 执行模式选择
         ttk.Label(toolbar, text="执行模式:").pack(side=tk.LEFT, padx=(0, 5))
         
-        self.execution_mode_var = tk.StringVar(value="single")
-        self.execution_mode_combo = ttk.Combobox(toolbar, textvariable=self.execution_mode_var, 
+        self.execution_mode_var = tk.StringVar(value="单次执行")
+        self.execution_mode_combo = ttk.Combobox(toolbar, textvariable=self.execution_mode_var,
                                                 values=["单次执行", "循环执行"], state="readonly", width=10)
         self.execution_mode_combo.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # 设置默认值
-        self.execution_mode_combo.set("单次执行")
         
         # 执行控制按钮
         self.start_button = ttk.Button(toolbar, text="开始执行", command=self.start_execution)
@@ -310,6 +307,8 @@ class AutomationGUI:
         elif step.step_type == "keyboard_press":
             self.edit_notebook.select(1)  # 选择键盘按键标签页
             self.key_var.set(step.params.get('key', ''))
+            self.key_type_var.set(step.params.get('key_type', 'single'))
+            self.text_var.set(step.params.get('text', ''))
             self.key_duration_var.set(str(step.params.get('duration', 0.05)))
             
         elif step.step_type == "image_search":
@@ -335,7 +334,11 @@ class AutomationGUI:
             
         elif step.step_type == "wait":
             self.edit_notebook.select(3)  # 选择等待标签页
+            self.wait_type_var.set(step.params.get('wait_type', 'time'))
             self.wait_time_var.set(str(step.params.get('time', 1.0)))
+            self.wait_image_var.set(step.params.get('wait_image', ''))
+            if hasattr(self, 'wait_timeout_var'):
+                self.wait_timeout_var.set(str(step.params.get('timeout', 10)))
         
         # 加载通用属性
         self.description_var.set(step.description)
@@ -351,6 +354,8 @@ class AutomationGUI:
             self.click_count_var.set("1")
             self.click_interval_var.set("0.1")
             self.key_var.set("")
+            self.key_type_var.set("single")
+            self.text_var.set("")
             self.key_duration_var.set("0.05")
             self.search_image_var.set("")
             self.confidence_var.set("0.8")
@@ -366,6 +371,10 @@ class AutomationGUI:
             self.save_region_var.set(False)
             self.use_saved_region_var.set(False)
             self.wait_time_var.set("1.0")
+            self.wait_type_var.set("time")
+            self.wait_image_var.set("")
+            if hasattr(self, 'wait_timeout_var'):
+                self.wait_timeout_var.set("10")
             self.description_var.set("")
             self.enabled_var.set(True)
     
@@ -422,23 +431,12 @@ class AutomationGUI:
         self.screenshot_manager.show_screenshot_dialog(screenshot, dialog_type)
     
     def update_status(self, message):
-        """更新状态"""
+        """更新状态（主线程调用）"""
         self.status_var.set(message)
-    
-    def update_execution_mode(self):
-        """更新执行模式显示"""
-        selected_value = self.execution_mode_combo.get()
-        
-        if selected_value == "single":
-            self.execution_mode_combo.set("单次执行")
-            self.execution_mode_var.set("single")
-        elif selected_value == "loop":
-            self.execution_mode_combo.set("循环执行")
-            self.execution_mode_var.set("loop")
-        elif selected_value == "单次执行":
-            self.execution_mode_var.set("single")
-        elif selected_value == "循环执行":
-            self.execution_mode_var.set("loop")
+
+    def _thread_safe_status(self, message):
+        """线程安全的状态更新（供子线程回调使用）"""
+        self.root.after(0, lambda: self.status_var.set(message))
     
     # 步骤操作方法
     def add_step(self):
@@ -550,13 +548,21 @@ class AutomationGUI:
         
         elif current_tab == 1:  # 键盘按键
             key = self.key_var.get()
-            if not key:
+            key_type = self.key_type_var.get()
+            text = self.text_var.get()
+
+            if key_type == 'text':
+                if not text:
+                    messagebox.showerror("错误", "请输入文本")
+                    return None
+            elif not key:
                 messagebox.showerror("错误", "请输入按键")
                 return None
-            
+
             try:
                 duration = float(self.key_duration_var.get())
-                step = ActionStep("keyboard_press", key=key, duration=duration)
+                step = ActionStep("keyboard_press", key=key, key_type=key_type,
+                                text=text, duration=duration)
                 step.description = self.description_var.get()
                 step.enabled = self.enabled_var.get()
                 return step
@@ -609,8 +615,17 @@ class AutomationGUI:
         
         elif current_tab == 3:  # 等待
             try:
+                wait_type = self.wait_type_var.get()
                 wait_time = float(self.wait_time_var.get())
-                step = ActionStep("wait", time=wait_time)
+                wait_image = self.wait_image_var.get()
+                wait_timeout = float(self.wait_timeout_var.get()) if hasattr(self, 'wait_timeout_var') and self.wait_timeout_var.get() else 10.0
+
+                if wait_type == 'image' and not wait_image:
+                    messagebox.showerror("错误", "请选择等待图片")
+                    return None
+
+                step = ActionStep("wait", wait_type=wait_type, time=wait_time,
+                                wait_image=wait_image, timeout=wait_timeout)
                 step.description = self.description_var.get()
                 step.enabled = self.enabled_var.get()
                 return step
