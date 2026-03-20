@@ -8,6 +8,7 @@
 
 import time
 import threading
+import gc
 import pyautogui
 import keyboard
 import cv2
@@ -34,10 +35,14 @@ class ExecutionEngine:
     
     def locate_on_screen_chinese(self, image_path, region=None, confidence=0.8):
         """支持中文路径的屏幕图片搜索，支持多尺度匹配以适应不同分辨率"""
+        pil_template = None
+        pil_screenshot = None
         try:
             # 使用PIL和numpy读取图片，支持中文路径
-            template = Image.open(image_path)
-            template = np.array(template)
+            pil_template = Image.open(image_path)
+            template = np.array(pil_template)
+            pil_template.close()
+            pil_template = None
 
             # 处理不同通道数
             if len(template.shape) == 2:
@@ -48,8 +53,10 @@ class ExecutionEngine:
                 template = cv2.cvtColor(template, cv2.COLOR_RGB2BGR)
 
             # 截取屏幕
-            screenshot = pyautogui.screenshot(region=region)
-            screenshot = np.array(screenshot)
+            pil_screenshot = pyautogui.screenshot(region=region)
+            screenshot = np.array(pil_screenshot)
+            pil_screenshot.close()
+            pil_screenshot = None
             screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
 
             th, tw = template.shape[:2]
@@ -64,6 +71,7 @@ class ExecutionEngine:
             if tw <= sw and th <= sh:
                 result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
+                del result
                 if max_val >= confidence:
                     best_val = max_val
                     best_loc = max_loc
@@ -84,6 +92,8 @@ class ExecutionEngine:
                     scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
                     result = cv2.matchTemplate(screenshot, scaled, cv2.TM_CCOEFF_NORMED)
                     _, max_val, _, max_loc = cv2.minMaxLoc(result)
+                    del result
+                    del scaled
 
                     if max_val > best_val:
                         best_val = max_val
@@ -94,6 +104,10 @@ class ExecutionEngine:
                     # 找到高置信度匹配就提前退出
                     if best_val >= min(confidence + 0.1, 0.98):
                         break
+
+            # 释放大数组
+            del template
+            del screenshot
 
             if best_val >= confidence and best_loc is not None:
                 left = best_loc[0]
@@ -109,6 +123,11 @@ class ExecutionEngine:
         except Exception as e:
             print(f"图片搜索错误: {str(e)}")
             return None
+        finally:
+            if pil_template:
+                pil_template.close()
+            if pil_screenshot:
+                pil_screenshot.close()
         
     def execute_steps(self, steps, loop_mode=False, loop_interval=0.5):
         """执行步骤列表"""
@@ -159,6 +178,10 @@ class ExecutionEngine:
                     self.update_status("所有步骤执行完成")
                     break
                 
+                # 每轮循环结束后回收内存
+                if loop_mode:
+                    gc.collect()
+
                 # 循环间延迟，分解为小段以便及时响应停止
                 if loop_mode:
                     sleep_time = loop_interval
@@ -284,25 +307,31 @@ class ExecutionEngine:
         
         start_time = time.time()
         found_location = None
-        
+        search_count = 0
+
         while time.time() - start_time < timeout:
             if self.should_stop:
                 break
-            
+
             try:
                 # 搜索图片 - 使用支持中文路径的方法
                 if search_region:
                     location = self.locate_on_screen_chinese(image_path, region=search_region, confidence=confidence)
                 else:
                     location = self.locate_on_screen_chinese(image_path, confidence=confidence)
-                
+
                 if location:
                     found_location = location
                     break
-                
+
             except Exception:
                 pass
-            
+
+            search_count += 1
+            # 每搜索10次强制回收一次内存，防止RDP等环境下内存泄漏
+            if search_count % 10 == 0:
+                gc.collect()
+
             time.sleep(0.1)
         
         if not found_location:
@@ -345,15 +374,17 @@ class ExecutionEngine:
         """从指定位置向上搜索目标图片"""
         if not os.path.exists(target_image):
             return None
-        
-        # 截取屏幕
+
+        # 截取屏幕（仅用于获取尺寸，然后立即关闭）
         screenshot = pyautogui.screenshot()
-        
+        screen_width = screenshot.width
+        screenshot.close()
+
         # 搜索区域：从起始位置向上搜索 (left, top, width, height)
         search_height = 200  # 向上搜索200像素
         region_left = max(0, start_x - 100)
         region_top = max(0, start_y - search_height)
-        region_width = min(screenshot.width, start_x + 100) - region_left
+        region_width = min(screen_width, start_x + 100) - region_left
         region_height = start_y - region_top
         search_region = (region_left, region_top, region_width, region_height)
         
@@ -384,11 +415,12 @@ class ExecutionEngine:
             # 等待图片出现
             start_time = time.time()
             timeout = params.get('timeout', 10)
-            
+            search_count = 0
+
             while time.time() - start_time < timeout:
                 if self.should_stop:
                     break
-                
+
                 try:
                     # 使用支持中文路径的方法
                     location = self.locate_on_screen_chinese(wait_image, confidence=0.8)
@@ -396,7 +428,11 @@ class ExecutionEngine:
                         break
                 except Exception:
                     pass
-                
+
+                search_count += 1
+                if search_count % 10 == 0:
+                    gc.collect()
+
                 time.sleep(0.1)
     
     def clear_saved_region(self):
