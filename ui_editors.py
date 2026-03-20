@@ -13,6 +13,7 @@ import time
 import os
 import pyautogui
 from dialogs import ScreenshotDialog
+from screenshot_util import take_screenshot
 
 class EditPageManager:
     """编辑页面管理器"""
@@ -238,7 +239,7 @@ class ScreenshotManager:
             time.sleep(3)  # 等待3秒
             
             # 截取全屏
-            screenshot = pyautogui.screenshot()
+            screenshot = take_screenshot()
             
             # 显示截图选择对话框
             self.gui.root.after(0, lambda: self.show_screenshot_dialog(screenshot, "position"))
@@ -259,7 +260,7 @@ class ScreenshotManager:
             time.sleep(3)  # 等待3秒
             
             # 截取全屏
-            screenshot = pyautogui.screenshot()
+            screenshot = take_screenshot()
             
             # 显示截图选择对话框
             self.gui.root.after(0, lambda: self.show_screenshot_dialog(screenshot, "search_image"))
@@ -280,7 +281,7 @@ class ScreenshotManager:
             time.sleep(3)  # 等待3秒
             
             # 截取全屏
-            screenshot = pyautogui.screenshot()
+            screenshot = take_screenshot()
             
             # 显示截图选择对话框
             self.gui.root.after(0, lambda: self.show_screenshot_dialog(screenshot, "region"))

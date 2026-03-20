@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
+from screenshot_util import take_screenshot
 
 class MatchResult:
     """模板匹配结果"""
@@ -53,7 +54,7 @@ class ExecutionEngine:
                 template = cv2.cvtColor(template, cv2.COLOR_RGB2BGR)
 
             # 截取屏幕
-            pil_screenshot = pyautogui.screenshot(region=region)
+            pil_screenshot = take_screenshot(region=region)
             screenshot = np.array(pil_screenshot)
             pil_screenshot.close()
             pil_screenshot = None
@@ -376,7 +377,7 @@ class ExecutionEngine:
             return None
 
         # 截取屏幕（仅用于获取尺寸，然后立即关闭）
-        screenshot = pyautogui.screenshot()
+        screenshot = take_screenshot()
         screen_width = screenshot.width
         screenshot.close()
 

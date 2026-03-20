@@ -38,6 +38,11 @@ def check_dependencies():
         import keyboard
     except ImportError:
         missing_deps.append("keyboard")
+
+    try:
+        import mss
+    except ImportError:
+        missing_deps.append("mss")
     
     if missing_deps:
         root = tk.Tk()
