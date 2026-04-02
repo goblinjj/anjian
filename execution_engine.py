@@ -7,6 +7,7 @@
 """
 
 import time
+import random
 import threading
 import gc
 import pyautogui
@@ -16,6 +17,12 @@ import numpy as np
 from PIL import Image
 import os
 from screenshot_util import take_screenshot
+
+
+class ExecutionContext:
+    """执行上下文，用于跨步骤传递状态"""
+    def __init__(self):
+        self.should_break = False  # break_loop 标志
 
 class MatchResult:
     """模板匹配结果"""
@@ -134,71 +141,166 @@ class ExecutionEngine:
         """执行步骤列表"""
         self.is_running = True
         self.should_stop = False
-        self.saved_region = None  # 重置保存的区域
-        
+        self.saved_region = None
+        ctx = ExecutionContext()
+
         try:
             loop_count = 0
-            
+
             while True:
                 if loop_mode:
                     loop_count += 1
                     self.update_status(f"第 {loop_count} 次循环执行")
-                
-                # 执行所有步骤
-                for i, step in enumerate(steps):
-                    if self.should_stop:
-                        break
-                        
-                    if not step.enabled:
-                        continue
-                    
-                    if loop_mode:
-                        self.update_status(f"第 {loop_count} 次循环 - 步骤 {i+1}/{len(steps)}: {step.description}")
-                    else:
-                        self.update_status(f"执行步骤 {i+1}/{len(steps)}: {step.description}")
-                    
-                    try:
-                        self.execute_single_step(step)
-                    except Exception as e:
-                        if loop_mode:
-                            self.update_status(f"第 {loop_count} 次循环 - 步骤 {i+1} 执行失败: {str(e)}")
-                        else:
-                            self.update_status(f"步骤 {i+1} 执行失败: {str(e)}")
-                        break
-                    
-                    # 步骤间延迟
-                    if not self.should_stop:
-                        time.sleep(0.1)
-                
-                # 检查是否需要停止或继续循环
+
+                self._execute_step_list(steps, ctx)
+
                 if self.should_stop:
                     break
-                
-                # 如果不是循环模式，执行完一次就退出
+
                 if not loop_mode:
                     self.update_status("所有步骤执行完成")
                     break
-                
-                # 每轮循环结束后回收内存
-                if loop_mode:
-                    gc.collect()
 
-                # 循环间延迟，分解为小段以便及时响应停止
-                if loop_mode:
-                    sleep_time = loop_interval
-                    while sleep_time > 0 and not self.should_stop:
-                        time.sleep(min(0.1, sleep_time))
-                        sleep_time -= 0.1
-        
+                # 每轮循环结束后回收内存
+                gc.collect()
+
+                # 循环间延迟
+                sleep_time = loop_interval
+                while sleep_time > 0 and not self.should_stop:
+                    time.sleep(min(0.1, sleep_time))
+                    sleep_time -= 0.1
+
         except Exception as e:
             self.update_status(f"执行出错: {str(e)}")
-        
+
         finally:
             self.is_running = False
             self.should_stop = False
-    
+
+    def _execute_step_list(self, steps, ctx):
+        """递归执行步骤列表"""
+        for i, step in enumerate(steps):
+            if self.should_stop or ctx.should_break:
+                break
+
+            if not step.enabled:
+                continue
+
+            self.update_status(f"执行: {step.description or step.step_type}")
+
+            try:
+                self._execute_one_step(step, ctx)
+            except Exception as e:
+                self.update_status(f"步骤执行失败: {str(e)}")
+                break
+
+            if not self.should_stop and not ctx.should_break:
+                time.sleep(0.1)
+
+    def _execute_one_step(self, step, ctx):
+        """执行单个步骤（支持容器类型的递归分发）"""
+        if step.step_type == 'if_image':
+            self._execute_if_image(step, ctx)
+        elif step.step_type == 'for_loop':
+            self._execute_for_loop(step, ctx)
+        elif step.step_type == 'while_image':
+            self._execute_while_image(step, ctx)
+        elif step.step_type == 'break_loop':
+            ctx.should_break = True
+        elif step.step_type == 'random_delay':
+            self._execute_random_delay(step)
+        elif step.step_type == 'mouse_scroll':
+            self._execute_mouse_scroll(step)
+        else:
+            self.execute_single_step(step)
+
+    def _check_image_exists(self, image_path, confidence=0.8, timeout=3):
+        """检查图片是否在屏幕上存在，返回 True/False"""
+        if not os.path.exists(image_path):
+            return False
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if self.should_stop:
+                return False
+            try:
+                location = self.locate_on_screen_chinese(image_path, confidence=confidence)
+                if location:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.1)
+        return False
+
+    def _execute_if_image(self, step, ctx):
+        """执行条件判断步骤"""
+        image_path = step.params.get('image_path', '')
+        confidence = step.params.get('confidence', 0.8)
+        timeout = step.params.get('timeout', 3)
+
+        found = self._check_image_exists(image_path, confidence, timeout)
+
+        if found:
+            self.update_status("条件成立: 找到图片")
+            self._execute_step_list(step.children, ctx)
+        else:
+            self.update_status("条件不成立: 未找到图片")
+            self._execute_step_list(step.else_children, ctx)
+
+    def _execute_for_loop(self, step, ctx):
+        """执行循环(N次)步骤"""
+        count = step.params.get('count', 1)
+        for i in range(count):
+            if self.should_stop or ctx.should_break:
+                break
+            self.update_status(f"循环第 {i + 1}/{count} 次")
+            self._execute_step_list(step.children, ctx)
+        ctx.should_break = False  # 重置break标志
+
+    def _execute_while_image(self, step, ctx):
+        """执行条件循环步骤"""
+        image_path = step.params.get('image_path', '')
+        confidence = step.params.get('confidence', 0.8)
+        condition = step.params.get('condition', 'exists')
+        max_iterations = step.params.get('max_iterations', 100)
+
+        iteration = 0
+        while not self.should_stop and not ctx.should_break:
+            iteration += 1
+            if iteration > max_iterations:
+                self.update_status(f"条件循环已达最大次数 {max_iterations}")
+                break
+
+            found = self._check_image_exists(image_path, confidence, timeout=2)
+            should_continue = (found if condition == 'exists' else not found)
+
+            if not should_continue:
+                self.update_status("条件循环结束: 条件不再满足")
+                break
+
+            self.update_status(f"条件循环第 {iteration} 次")
+            self._execute_step_list(step.children, ctx)
+        ctx.should_break = False
+
+    def _execute_random_delay(self, step):
+        """执行随机延迟"""
+        min_time = step.params.get('min_time', 0.5)
+        max_time = step.params.get('max_time', 2.0)
+        delay = random.uniform(min_time, max_time)
+        self.update_status(f"随机延迟 {delay:.1f} 秒")
+        remaining = delay
+        while remaining > 0 and not self.should_stop:
+            time.sleep(min(0.1, remaining))
+            remaining -= 0.1
+
+    def _execute_mouse_scroll(self, step):
+        """执行鼠标滚轮"""
+        x = step.params.get('x', 0)
+        y = step.params.get('y', 0)
+        clicks = step.params.get('clicks', 3)
+        pyautogui.scroll(clicks, x=x, y=y)
+
     def execute_single_step(self, step):
-        """执行单个步骤"""
+        """执行单个基本步骤（叶子节点）"""
         if step.step_type == "mouse_click":
             self.execute_mouse_click(step)
         elif step.step_type == "keyboard_press":
@@ -490,14 +592,20 @@ class AutomationRunner:
         """测试单个步骤"""
         if self.is_running():
             return False
-        
+
         def test_thread():
+            self.engine.is_running = True
+            self.engine.should_stop = False
             try:
-                self.engine.execute_single_step(step)
+                ctx = ExecutionContext()
+                self.engine._execute_one_step(step, ctx)
                 self.engine.update_status("测试完成")
             except Exception as e:
                 self.engine.update_status(f"测试失败: {str(e)}")
-        
+            finally:
+                self.engine.is_running = False
+                self.engine.should_stop = False
+
         thread = threading.Thread(target=test_thread, daemon=True)
         thread.start()
         return True

@@ -28,38 +28,65 @@ class StepTypeDialog:
         """创建对话框"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("选择步骤类型")
-        self.dialog.geometry("300x250")  # 增加高度从200到250
+        self.dialog.geometry("320x480")
         self.dialog.resizable(False, False)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
-        
+
         # 居中显示
         self.dialog.geometry("+%d+%d" % (self.parent.winfo_rootx() + 50, self.parent.winfo_rooty() + 50))
-        
+
         # 主框架
         main_frame = ttk.Frame(self.dialog, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # 标题
-        ttk.Label(main_frame, text="请选择要添加的步骤类型:", font=("Arial", 12)).pack(pady=(0, 20))
-        
+        ttk.Label(main_frame, text="请选择要添加的步骤类型:", font=("Arial", 12)).pack(pady=(0, 10))
+
         # 步骤类型选择
         self.step_type_var = tk.StringVar(value="mouse_click")
-        
-        types = [
+
+        # 基本操作组
+        basic_frame = ttk.LabelFrame(main_frame, text="基本操作", padding="8")
+        basic_frame.pack(fill=tk.X, pady=(0, 8))
+
+        basic_types = [
             ("mouse_click", "鼠标点击"),
             ("keyboard_press", "键盘按键"),
             ("image_search", "图片搜索"),
-            ("wait", "等待")
+            ("wait", "等待"),
         ]
-        
-        for value, text in types:
-            ttk.Radiobutton(main_frame, text=text, variable=self.step_type_var, value=value).pack(anchor=tk.W, pady=2)
-        
+        for value, text in basic_types:
+            ttk.Radiobutton(basic_frame, text=text, variable=self.step_type_var, value=value).pack(anchor=tk.W, pady=1)
+
+        # 流程控制组
+        flow_frame = ttk.LabelFrame(main_frame, text="流程控制", padding="8")
+        flow_frame.pack(fill=tk.X, pady=(0, 8))
+
+        flow_types = [
+            ("if_image", "条件判断 (如果找到图片)"),
+            ("for_loop", "循环 (N次)"),
+            ("while_image", "条件循环 (当图片存在时)"),
+            ("break_loop", "跳出循环"),
+        ]
+        for value, text in flow_types:
+            ttk.Radiobutton(flow_frame, text=text, variable=self.step_type_var, value=value).pack(anchor=tk.W, pady=1)
+
+        # 高级操作组
+        adv_frame = ttk.LabelFrame(main_frame, text="高级操作", padding="8")
+        adv_frame.pack(fill=tk.X, pady=(0, 8))
+
+        adv_types = [
+            ("random_delay", "随机延迟"),
+            ("mouse_scroll", "鼠标滚轮"),
+        ]
+        for value, text in adv_types:
+            ttk.Radiobutton(adv_frame, text=text, variable=self.step_type_var, value=value).pack(anchor=tk.W, pady=1)
+
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(side=tk.BOTTOM, pady=(20, 0))
-        
+        button_frame.pack(side=tk.BOTTOM, pady=(10, 0))
+
         ttk.Button(button_frame, text="确定", command=self.ok_clicked).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(button_frame, text="取消", command=self.cancel_clicked).pack(side=tk.LEFT)
     

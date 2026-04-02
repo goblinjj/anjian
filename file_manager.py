@@ -94,7 +94,7 @@ class ConfigManager:
     def save_to_file(self, filename):
         """保存到文件"""
         config = {
-            "version": "1.0",
+            "version": "2.0",
             "created_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "description": "",
             "steps": [step.to_dict() for step in self.gui.steps]
