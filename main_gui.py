@@ -181,6 +181,22 @@ class AutomationGUI:
         self.step_tree.bind("<<TreeviewSelect>>", self.on_step_select)
         self.step_tree.bind("<Double-1>", self.on_step_double_click)
 
+        # 拖拽相关状态
+        self._drag_item = None        # 正在拖拽的 item ID
+        self._drag_step = None        # 正在拖拽的 ActionStep
+        self._drag_source_list = None # 拖拽源列表
+        self._drop_indicator = None   # 放置指示器（'before', 'after', 'into'）
+        self._drop_target = None      # 放置目标 item ID
+
+        # 绑定拖拽事件
+        self.step_tree.bind("<ButtonPress-1>", self._on_drag_start)
+        self.step_tree.bind("<B1-Motion>", self._on_drag_motion)
+        self.step_tree.bind("<ButtonRelease-1>", self._on_drag_end)
+
+        # 绑定右键菜单
+        self.step_tree.bind("<Button-2>", self._show_context_menu)   # macOS
+        self.step_tree.bind("<Button-3>", self._show_context_menu)   # Windows/Linux
+
         # 步骤操作按钮 - 第一行
         button_frame1 = ttk.Frame(left_frame)
         button_frame1.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
@@ -695,6 +711,302 @@ class AutomationGUI:
                 parent_list[index], parent_list[index + 1] = parent_list[index + 1], parent_list[index]
                 self.refresh_step_list()
                 self.update_status("步骤已下移")
+
+    # ==================== 拖拽操作方法 ====================
+
+    def _on_drag_start(self, event):
+        """开始拖拽"""
+        item = self.step_tree.identify_row(event.y)
+        if not item or item in self._branch_label_items:
+            self._drag_item = None
+            return
+        step = self._item_to_step.get(item)
+        parent_list = self._item_to_parent_list.get(item)
+        if step and parent_list is not None:
+            self._drag_item = item
+            self._drag_step = step
+            self._drag_source_list = parent_list
+            self._drag_start_y = event.y
+
+    def _on_drag_motion(self, event):
+        """拖拽移动中"""
+        if not self._drag_item:
+            return
+
+        # 需要至少移动几个像素才算拖拽（避免误触）
+        if hasattr(self, '_drag_start_y') and abs(event.y - self._drag_start_y) < 5:
+            return
+
+        # 清除旧的指示器
+        self._clear_drop_indicator()
+
+        target = self.step_tree.identify_row(event.y)
+        if not target or target == self._drag_item:
+            self._drop_target = None
+            self._drop_indicator = None
+            self.step_tree.config(cursor="no")
+            return
+
+        # 检查是否拖入自身后代（防止循环）
+        if self._is_descendant(target, self._drag_item):
+            self._drop_target = None
+            self._drop_indicator = None
+            self.step_tree.config(cursor="no")
+            return
+
+        # 判断放置位置：上半/下半/容器内部
+        bbox = self.step_tree.bbox(target)
+        if not bbox:
+            return
+
+        y_in_item = event.y - bbox[1]
+        item_height = bbox[3]
+
+        if target in self._branch_label_items:
+            # 分支标签：整个区域都是"放入"
+            self._drop_indicator = 'into'
+            self._drop_target = target
+            self.step_tree.tag_configure('drop_into', background='#cce5ff')
+            self.step_tree.item(target, tags=('drop_into',))
+        else:
+            target_step = self._item_to_step.get(target)
+            is_container = target_step and target_step.step_type in CONTAINER_STEP_TYPES
+
+            if is_container and item_height > 0:
+                # 容器步骤：上1/4=before, 中间1/2=into, 下1/4=after
+                if y_in_item < item_height * 0.25:
+                    self._drop_indicator = 'before'
+                    self._drop_target = target
+                elif y_in_item > item_height * 0.75:
+                    self._drop_indicator = 'after'
+                    self._drop_target = target
+                else:
+                    self._drop_indicator = 'into'
+                    self._drop_target = target
+            else:
+                # 普通步骤：上半=before, 下半=after
+                if y_in_item < item_height * 0.5:
+                    self._drop_indicator = 'before'
+                    self._drop_target = target
+                else:
+                    self._drop_indicator = 'after'
+                    self._drop_target = target
+
+        # 视觉反馈
+        if self._drop_indicator == 'into':
+            self.step_tree.tag_configure('drop_into', background='#cce5ff')
+            self.step_tree.item(self._drop_target, tags=('drop_into',))
+            self.step_tree.config(cursor="plus")
+        elif self._drop_indicator == 'before':
+            self.step_tree.tag_configure('drop_line', background='#b3d9ff')
+            self.step_tree.item(self._drop_target, tags=('drop_line',))
+            self.step_tree.config(cursor="sb_up_arrow")
+        elif self._drop_indicator == 'after':
+            self.step_tree.tag_configure('drop_line', background='#b3d9ff')
+            self.step_tree.item(self._drop_target, tags=('drop_line',))
+            self.step_tree.config(cursor="sb_down_arrow")
+
+    def _on_drag_end(self, event):
+        """拖拽结束"""
+        self.step_tree.config(cursor="")
+        self._clear_drop_indicator()
+
+        if not self._drag_item or not self._drop_target or not self._drop_indicator:
+            self._reset_drag_state()
+            return
+
+        drag_step = self._drag_step
+        source_list = self._drag_source_list
+        drop_target = self._drop_target
+        drop_indicator = self._drop_indicator
+
+        self._reset_drag_state()
+
+        if not drag_step or source_list is None:
+            return
+
+        # 确定目标列表和插入位置
+        if drop_indicator == 'into':
+            if drop_target in self._branch_label_items:
+                target_list = self._branch_label_to_list.get(drop_target)
+                if target_list is None:
+                    return
+                insert_index = len(target_list)
+            else:
+                target_step = self._item_to_step.get(drop_target)
+                if not target_step or target_step.step_type not in CONTAINER_STEP_TYPES:
+                    return
+                # 对于 if_image，默认放入 children
+                target_list = target_step.children
+                insert_index = len(target_list)
+        else:
+            # before/after：插入到同级
+            target_step = self._item_to_step.get(drop_target)
+            target_list = self._item_to_parent_list.get(drop_target)
+            if target_step is None or target_list is None:
+                return
+            try:
+                target_index = target_list.index(target_step)
+            except ValueError:
+                return
+            if drop_indicator == 'before':
+                insert_index = target_index
+            else:
+                insert_index = target_index + 1
+
+        # 同一列表内移动时调整索引
+        try:
+            source_index = source_list.index(drag_step)
+        except ValueError:
+            return
+
+        if source_list is target_list and source_index < insert_index:
+            insert_index -= 1
+
+        # 执行移动
+        source_list.remove(drag_step)
+        target_list.insert(insert_index, drag_step)
+
+        self.refresh_step_list()
+        self.update_status("步骤已移动")
+
+    def _is_descendant(self, item, ancestor):
+        """检查 item 是否是 ancestor 的后代"""
+        parent = self.step_tree.parent(item)
+        while parent:
+            if parent == ancestor:
+                return True
+            parent = self.step_tree.parent(parent)
+        return False
+
+    def _clear_drop_indicator(self):
+        """清除放置指示器"""
+        for item_id in self._item_to_step:
+            self.step_tree.item(item_id, tags=())
+        for item_id in self._branch_label_items:
+            self.step_tree.item(item_id, tags=())
+
+    def _reset_drag_state(self):
+        """重置拖拽状态"""
+        self._drag_item = None
+        self._drag_step = None
+        self._drag_source_list = None
+        self._drop_indicator = None
+        self._drop_target = None
+
+    # ==================== 右键菜单 ====================
+
+    def _show_context_menu(self, event):
+        """显示右键上下文菜单"""
+        item = self.step_tree.identify_row(event.y)
+        if not item:
+            # 空白区域右键：只显示添加
+            menu = tk.Menu(self.root, tearoff=0)
+            menu.add_command(label="添加步骤", command=self.add_step)
+            menu.tk_popup(event.x_root, event.y_root)
+            return
+
+        # 选中该项
+        self.step_tree.selection_set(item)
+
+        menu = tk.Menu(self.root, tearoff=0)
+
+        if item in self._branch_label_items:
+            # 分支标签右键
+            menu.add_command(label="添加步骤到此分支", command=self.add_step)
+        else:
+            step = self._item_to_step.get(item)
+            parent_list = self._item_to_parent_list.get(item)
+            if not step or parent_list is None:
+                return
+
+            menu.add_command(label="编辑步骤", command=self.edit_step)
+            menu.add_separator()
+            menu.add_command(label="上移", command=self.move_step_up)
+            menu.add_command(label="下移", command=self.move_step_down)
+            menu.add_separator()
+
+            # 移入相邻容器
+            try:
+                index = parent_list.index(step)
+            except ValueError:
+                index = -1
+
+            if index > 0:
+                prev_step = parent_list[index - 1]
+                if prev_step.step_type in CONTAINER_STEP_TYPES:
+                    name = self.get_step_type_name(prev_step.step_type)
+                    desc = prev_step.description or name
+                    menu.add_command(
+                        label=f"移入上方「{desc}」",
+                        command=lambda s=step, pl=parent_list, t=prev_step: self._move_into_container(s, pl, t))
+
+            if index >= 0 and index < len(parent_list) - 1:
+                next_step = parent_list[index + 1]
+                if next_step.step_type in CONTAINER_STEP_TYPES:
+                    name = self.get_step_type_name(next_step.step_type)
+                    desc = next_step.description or name
+                    menu.add_command(
+                        label=f"移入下方「{desc}」",
+                        command=lambda s=step, pl=parent_list, t=next_step: self._move_into_container(s, pl, t))
+
+            # 移出到上层
+            if parent_list is not self.steps:
+                menu.add_command(label="移出到上层", command=lambda s=step, pl=parent_list: self._move_out_to_parent(s, pl))
+
+            menu.add_separator()
+
+            # 容器步骤特有选项
+            if step.step_type in CONTAINER_STEP_TYPES:
+                menu.add_command(label="添加子步骤", command=self.add_child_step)
+                if step.step_type == 'if_image':
+                    menu.add_command(label="添加到否则分支", command=self.add_else_step)
+                menu.add_separator()
+
+            menu.add_command(label="删除步骤", command=self.delete_step)
+
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _move_into_container(self, step, source_list, container_step):
+        """将步骤移入容器的children"""
+        source_list.remove(step)
+        container_step.children.append(step)
+        self.refresh_step_list()
+        self.update_status("步骤已移入容器")
+
+    def _move_out_to_parent(self, step, source_list):
+        """将步骤移出到上一层"""
+        # 找到包含 source_list 的父步骤
+        parent_step, grandparent_list = self._find_parent_of_list(source_list, self.steps)
+        if parent_step is None or grandparent_list is None:
+            return
+
+        source_list.remove(step)
+        try:
+            parent_index = grandparent_list.index(parent_step)
+        except ValueError:
+            return
+        grandparent_list.insert(parent_index + 1, step)
+        self.refresh_step_list()
+        self.update_status("步骤已移出到上层")
+
+    def _find_parent_of_list(self, target_list, search_in, parent_step=None, grandparent_list=None):
+        """递归查找包含 target_list 的父步骤和祖父列表"""
+        for step in search_in:
+            if step.step_type in CONTAINER_STEP_TYPES:
+                if step.children is target_list:
+                    return step, search_in
+                if step.step_type == 'if_image' and step.else_children is target_list:
+                    return step, search_in
+                # 递归搜索
+                result = self._find_parent_of_list(target_list, step.children)
+                if result[0] is not None:
+                    return result
+                if step.step_type == 'if_image':
+                    result = self._find_parent_of_list(target_list, step.else_children)
+                    if result[0] is not None:
+                        return result
+        return None, None
 
     def test_current_step(self):
         """测试当前步骤"""
