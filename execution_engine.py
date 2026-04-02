@@ -41,8 +41,12 @@ class ExecutionEngine:
         self.should_stop = False
         self.saved_region = None  # 保存的搜索区域
     
-    def locate_on_screen_chinese(self, image_path, region=None, confidence=0.8):
-        """支持中文路径的屏幕图片搜索，支持多尺度匹配以适应不同分辨率"""
+    def locate_on_screen_chinese(self, image_path, region=None, confidence=0.8, exclude_rects=None):
+        """支持中文路径的屏幕图片搜索，支持多尺度匹配以适应不同分辨率
+
+        Args:
+            exclude_rects: 排除区域列表，每项为 (x, y, w, h)，坐标相对于截图区域（非屏幕绝对坐标）
+        """
         pil_template = None
         pil_screenshot = None
         try:
@@ -78,6 +82,9 @@ class ExecutionEngine:
             # 优先尝试原始尺寸（1x），大多数场景分辨率固定
             if tw <= sw and th <= sh:
                 result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
+                # 屏蔽排除区域
+                if exclude_rects:
+                    self._mask_exclude_rects(result, exclude_rects, tw, th)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
                 del result
                 if max_val >= confidence:
@@ -99,6 +106,8 @@ class ExecutionEngine:
 
                     scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
                     result = cv2.matchTemplate(screenshot, scaled, cv2.TM_CCOEFF_NORMED)
+                    if exclude_rects:
+                        self._mask_exclude_rects(result, exclude_rects, new_w, new_h)
                     _, max_val, _, max_loc = cv2.minMaxLoc(result)
                     del result
                     del scaled
@@ -136,7 +145,66 @@ class ExecutionEngine:
                 pil_template.close()
             if pil_screenshot:
                 pil_screenshot.close()
-        
+
+    def _mask_exclude_rects(self, result_matrix, exclude_rects, template_w, template_h):
+        """在匹配结果矩阵中屏蔽排除区域
+
+        Args:
+            result_matrix: cv2.matchTemplate 的结果矩阵，坐标是模板左上角位置
+            exclude_rects: 排除区域列表，每项为 (x, y, w, h)，坐标相对于截图
+            template_w: 当前模板宽度
+            template_h: 当前模板高度
+        """
+        rh, rw = result_matrix.shape[:2]
+        for ex, ey, ew, eh in exclude_rects:
+            # 排除区域覆盖的匹配矩阵范围：
+            # 模板左上角在 (rx, ry) 时，模板中心在 (rx + tw/2, ry + th/2)
+            # 如果模板中心落在排除区域内，则屏蔽该位置
+            rx1 = max(0, ex - template_w // 2)
+            ry1 = max(0, ey - template_h // 2)
+            rx2 = min(rw, ex + ew - template_w // 2)
+            ry2 = min(rh, ey + eh - template_h // 2)
+            if rx2 > rx1 and ry2 > ry1:
+                result_matrix[ry1:ry2, rx1:rx2] = -1.0
+
+    def _resolve_exclude_regions(self, exclude_items, search_region, confidence):
+        """解析排除项列表，定位每个排除图片并计算排除矩形
+
+        Args:
+            exclude_items: [{"image_path": "...", "radius": 50}, ...]
+            search_region: 当前搜索区域 (x, y, w, h) 或 None
+            confidence: 匹配置信度
+
+        Returns:
+            list of (x, y, w, h) 排除矩形，坐标相对于截图区域
+        """
+        exclude_rects = []
+        for item in exclude_items:
+            exc_path = item.get('image_path', '')
+            radius = item.get('radius', 50)
+            if not exc_path or not os.path.exists(exc_path):
+                continue  # 排除图片不存在则跳过
+            try:
+                # 在当前搜索区域中定位排除图片
+                loc = self.locate_on_screen_chinese(exc_path, region=search_region, confidence=confidence)
+                if loc:
+                    # 排除图片中心（相对于截图区域）
+                    center_x = loc.left + loc.width // 2
+                    center_y = loc.top + loc.height // 2
+                    # 如果有search_region，坐标需要转为相对于截图的坐标
+                    if search_region:
+                        center_x -= search_region[0]
+                        center_y -= search_region[1]
+                    # 正方形排除区域
+                    ex = max(0, center_x - radius)
+                    ey = max(0, center_y - radius)
+                    ew = radius * 2
+                    eh = radius * 2
+                    exclude_rects.append((ex, ey, ew, eh))
+            except Exception:
+                pass  # 排除图片搜索失败则跳过
+        return exclude_rects
+
     def execute_steps(self, steps, loop_mode=False, loop_interval=0.5):
         """执行步骤列表"""
         self.is_running = True
@@ -408,20 +476,33 @@ class ExecutionEngine:
                 self.saved_region = search_region
                 self.update_status(f"保存搜索区域: {search_region}")
         
+        # 排除区域参数
+        exclude_enabled = params.get('exclude_enabled', False)
+        exclude_items = params.get('exclude_items', [])
+
         start_time = time.time()
         found_location = None
         search_count = 0
+
+        # 解析排除区域（每次搜索循环都重新解析，因为排除图片可能移动）
+        exclude_rects = None
 
         while time.time() - start_time < timeout:
             if self.should_stop:
                 break
 
             try:
+                # 如果启用排除区域，先解析排除矩形
+                if exclude_enabled and exclude_items:
+                    exclude_rects = self._resolve_exclude_regions(exclude_items, search_region, confidence)
+                    if exclude_rects:
+                        self.update_status(f"排除 {len(exclude_rects)} 个区域后搜索")
+
                 # 搜索图片 - 使用支持中文路径的方法
-                if search_region:
-                    location = self.locate_on_screen_chinese(image_path, region=search_region, confidence=confidence)
-                else:
-                    location = self.locate_on_screen_chinese(image_path, confidence=confidence)
+                location = self.locate_on_screen_chinese(
+                    image_path, region=search_region, confidence=confidence,
+                    exclude_rects=exclude_rects
+                )
 
                 if location:
                     found_location = location

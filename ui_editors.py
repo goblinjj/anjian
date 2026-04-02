@@ -229,7 +229,89 @@ class EditPageManager:
         ttk.Radiobutton(wait_frame, text="左键点击", variable=self.gui.after_found_var, value="left_click").grid(row=1, column=2, sticky=tk.W, padx=5)
         ttk.Radiobutton(wait_frame, text="右键点击", variable=self.gui.after_found_var, value="right_click").grid(row=1, column=3, sticky=tk.W, padx=5)
         ttk.Radiobutton(wait_frame, text="双击", variable=self.gui.after_found_var, value="double_click").grid(row=2, column=1, sticky=tk.W, padx=5)
-    
+
+        # 排除区域设置
+        exclude_frame = ttk.LabelFrame(frame, text="排除区域设置")
+        exclude_frame.grid(row=4, column=0, columnspan=4, sticky=(tk.W, tk.E), padx=5, pady=5)
+
+        self.gui.exclude_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(exclude_frame, text="启用排除区域", variable=self.gui.exclude_enabled_var).grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=5, pady=2)
+
+        # 排除列表
+        ttk.Label(exclude_frame, text="排除图片列表:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.gui.exclude_listbox = tk.Listbox(exclude_frame, height=4, width=50)
+        self.gui.exclude_listbox.grid(row=2, column=0, columnspan=4, sticky=(tk.W, tk.E), padx=5, pady=2)
+
+        # 排除列表操作按钮
+        exc_btn_frame = ttk.Frame(exclude_frame)
+        exc_btn_frame.grid(row=3, column=0, columnspan=4, sticky=tk.W, padx=5, pady=2)
+        ttk.Button(exc_btn_frame, text="添加排除图片", command=self._add_exclude_image).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(exc_btn_frame, text="截图获取", command=self._screenshot_exclude_image).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(exc_btn_frame, text="删除选中", command=self._remove_exclude_image).pack(side=tk.LEFT, padx=(0, 10))
+
+        ttk.Label(exc_btn_frame, text="排除半径(px):").pack(side=tk.LEFT, padx=(5, 2))
+        self.gui.exclude_radius_var = tk.StringVar(value="50")
+        ttk.Entry(exc_btn_frame, textvariable=self.gui.exclude_radius_var, width=6).pack(side=tk.LEFT)
+
+        # 内部存储排除项数据: list of {"image_path": str, "radius": int}
+        self.gui._exclude_items_data = []
+
+    def _add_exclude_image(self):
+        """添加排除图片"""
+        filename = filedialog.askopenfilename(
+            title="选择排除图片",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")]
+        )
+        if filename:
+            try:
+                radius = int(self.gui.exclude_radius_var.get())
+            except ValueError:
+                radius = 50
+            self.gui._exclude_items_data.append({"image_path": filename, "radius": radius})
+            self._refresh_exclude_listbox()
+
+    def _screenshot_exclude_image(self):
+        """截图获取排除图片"""
+        messagebox.showinfo("截图获取", "请在3秒后进行截图选择...")
+        def do_screenshot():
+            try:
+                time.sleep(3)
+                screenshot = take_screenshot()
+                self.gui.root.after(0, lambda: self._show_screenshot_for_exclude(screenshot))
+            except Exception as e:
+                self.gui.root.after(0, lambda: messagebox.showerror("错误", f"截图失败: {str(e)}"))
+        import threading
+        threading.Thread(target=do_screenshot, daemon=True).start()
+
+    def _show_screenshot_for_exclude(self, screenshot):
+        """显示截图对话框用于排除图片"""
+        from dialogs import ScreenshotDialog
+        dialog = ScreenshotDialog(self.gui.root, screenshot, "search_image")
+        if dialog.result:
+            try:
+                radius = int(self.gui.exclude_radius_var.get())
+            except ValueError:
+                radius = 50
+            self.gui._exclude_items_data.append({"image_path": dialog.result, "radius": radius})
+            self._refresh_exclude_listbox()
+            self.gui.update_status(f"已添加排除图片: {dialog.result}")
+
+    def _remove_exclude_image(self):
+        """删除选中的排除图片"""
+        selection = self.gui.exclude_listbox.curselection()
+        if selection:
+            index = selection[0]
+            if 0 <= index < len(self.gui._exclude_items_data):
+                del self.gui._exclude_items_data[index]
+                self._refresh_exclude_listbox()
+
+    def _refresh_exclude_listbox(self):
+        """刷新排除图片列表显示"""
+        self.gui.exclude_listbox.delete(0, tk.END)
+        for i, item in enumerate(self.gui._exclude_items_data):
+            name = os.path.basename(item["image_path"])
+            self.gui.exclude_listbox.insert(tk.END, f"{i+1}. {name}  半径:{item['radius']}px")
+
     def create_wait_page(self):
         """创建等待编辑页面"""
         frame = ttk.Frame(self.notebook)

@@ -28,7 +28,7 @@ class StepTypeDialog:
         """创建对话框"""
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("选择步骤类型")
-        self.dialog.geometry("320x480")
+        self.dialog.geometry("320x560")
         self.dialog.resizable(False, False)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()

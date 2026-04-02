@@ -424,6 +424,11 @@ class AutomationGUI:
             self.save_region_var.set(step.params.get('save_region', False))
             self.use_saved_region_var.set(step.params.get('use_saved_region', False))
             self.on_search_region_change()
+            # 排除区域
+            if hasattr(self, 'exclude_enabled_var'):
+                self.exclude_enabled_var.set(step.params.get('exclude_enabled', False))
+                self._exclude_items_data = list(step.params.get('exclude_items', []))
+                self.edit_page_manager._refresh_exclude_listbox()
 
         elif step.step_type == "wait":
             self.wait_type_var.set(step.params.get('wait_type', 'time'))
@@ -488,6 +493,12 @@ class AutomationGUI:
             self.region_y2_var.set("100")
             self.save_region_var.set(False)
             self.use_saved_region_var.set(False)
+        if hasattr(self, 'exclude_enabled_var'):
+            self.exclude_enabled_var.set(False)
+            self._exclude_items_data = []
+            if hasattr(self, 'edit_page_manager') and hasattr(self.edit_page_manager, '_refresh_exclude_listbox'):
+                self.edit_page_manager._refresh_exclude_listbox()
+        if hasattr(self, 'mouse_button_var'):
             self.wait_time_var.set("1.0")
             self.wait_type_var.set("time")
             self.wait_image_var.set("")
@@ -794,6 +805,10 @@ class AutomationGUI:
                 save_region = self.save_region_var.get()
                 use_saved_region = self.use_saved_region_var.get()
 
+                # 排除区域参数
+                exclude_enabled = self.exclude_enabled_var.get() if hasattr(self, 'exclude_enabled_var') else False
+                exclude_items = list(self._exclude_items_data) if hasattr(self, '_exclude_items_data') else []
+
                 step = ActionStep("image_search",
                                 image_path=image_path,
                                 confidence=confidence,
@@ -807,7 +822,9 @@ class AutomationGUI:
                                 region_x2=region_x2,
                                 region_y2=region_y2,
                                 save_region=save_region,
-                                use_saved_region=use_saved_region)
+                                use_saved_region=use_saved_region,
+                                exclude_enabled=exclude_enabled,
+                                exclude_items=exclude_items)
                 step.description = self.description_var.get()
                 step.enabled = self.enabled_var.get()
                 return step
