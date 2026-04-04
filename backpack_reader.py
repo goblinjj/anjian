@@ -135,32 +135,51 @@ class BackpackReader:
         if cell_w < 15 or cell_h < 15:
             return (None, f"空格子模板太小({cell_w}x{cell_h})，请重新截取完整格子")
 
-        # 只在窗口右半部分搜索空格子（避免匹配左侧制造栏）
-        mid_x = screen_bgr.shape[1] // 2
-        right_half = screen_bgr[:, mid_x:]
+        # 限制搜索范围：标题右侧、标题下方的区域（制造窗口内）
+        # 制造窗口的背包网格在标题的右下方
+        title_x, title_y = title_loc
+        title_h = title_tmpl.shape[0]
+        title_w = title_tmpl.shape[1]
 
-        if (empty_tmpl.shape[0] > right_half.shape[0] or
-                empty_tmpl.shape[1] > right_half.shape[1]):
+        # 搜索区域：从标题x位置开始，到标题右侧最多6个格子宽度
+        # 从标题底部开始，到下方最多5个格子高度
+        search_x = max(0, title_x - cell_w)  # 稍微往左留余量
+        search_y = title_y + title_h  # 标题下方开始
+        search_w = min(title_w + GRID_COLS * cell_w + cell_w * 2,
+                       screen_bgr.shape[1] - search_x)
+        search_h = min(GRID_ROWS * cell_h + cell_h * 2,
+                       screen_bgr.shape[0] - search_y)
+
+        if search_w <= cell_w or search_h <= cell_h:
+            return (None, "搜索区域太小")
+
+        search_region = screen_bgr[
+            search_y : search_y + search_h,
+            search_x : search_x + search_w
+        ]
+
+        if (empty_tmpl.shape[0] > search_region.shape[0] or
+                empty_tmpl.shape[1] > search_region.shape[1]):
             return (None, "空格子模板大于搜索区域")
 
-        result = cv2.matchTemplate(right_half, empty_tmpl, cv2.TM_CCOEFF_NORMED)
+        result = cv2.matchTemplate(
+            search_region, empty_tmpl, cv2.TM_CCOEFF_NORMED)
         locations = np.where(result >= 0.8)
 
         if len(locations[0]) == 0:
             # 没有找到空格子（可能全满了），用标题位置回退
             offset_x = self.settings.get('grid_offset_x', 0)
             offset_y = self.settings.get('grid_offset_y', 0)
-            title_h = title_tmpl.shape[0]
-            origin_x = win_left + title_loc[0] + offset_x
-            origin_y = win_top + title_loc[1] + title_h + offset_y
+            origin_x = win_left + title_x + offset_x
+            origin_y = win_top + search_y + offset_y
             grid = GridInfo(origin_x, origin_y, cell_w, cell_h)
             return (grid, f"未找到空格子(背包可能全满)，用标题定位: {grid}")
 
         # ── 步骤3: 从空格子位置推算网格起点 ──
-        # 将匹配坐标转换回完整窗口坐标（加上右半偏移）
+        # 将搜索区域坐标转换回完整窗口坐标
         points = sorted(zip(
-            (locations[1] + mid_x).tolist(),
-            locations[0].tolist()
+            (locations[1] + search_x).tolist(),
+            (locations[0] + search_y).tolist()
         ))
 
         # 去重
