@@ -260,7 +260,9 @@ class CraftEngine:
             th, tw = tmpl.shape[:2]
             click_x = window_rect[0] + max_loc[0] + tw // 2
             click_y = window_rect[1] + max_loc[1] + th // 2
-            pyautogui.click(click_x, click_y)
+            pyautogui.moveTo(click_x, click_y)
+            time.sleep(0.15)
+            pyautogui.click()
             return True
         return False
 
