@@ -92,34 +92,60 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
-                # 3. 定位背包（最多重试3次）
-                self._log("扫描背包...")
+                # 3. 尝试空格子自动检测网格
+                grid_info = self.backpack_reader.detect_grid(window_rect)
                 backpack_origin = None
-                for attempt in range(3):
-                    if self._check_stop():
-                        break
-                    bx, by, info = self.backpack_reader.locate_backpack(window_rect)
-                    if bx is not None:
-                        backpack_origin = (bx, by)
-                        self._log(info)
-                        break
-                    if attempt < 2:
-                        self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
-                        time.sleep(1)
-                    else:
-                        self._log(f"定位背包失败: {info}")
+                cell_w = None
+                cell_h = None
+
+                if grid_info:
+                    backpack_origin = grid_info['origin']
+                    cell_w = grid_info['cell_width']
+                    cell_h = grid_info['cell_height']
+                    self._log(grid_info['info'])
+                else:
+                    # 回退到标题模板定位
+                    self._log("扫描背包...")
+                    for attempt in range(3):
+                        if self._check_stop():
+                            break
+                        bx, by, info = self.backpack_reader.locate_backpack(window_rect)
+                        if bx is not None:
+                            backpack_origin = (bx, by)
+                            self._log(info)
+                            break
+                        if attempt < 2:
+                            self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
+                            time.sleep(1)
+                        else:
+                            self._log(f"定位背包失败: {info}")
+
                 if not backpack_origin:
                     break
 
-                # 4. 扫描背包格子
-                slots = self.backpack_reader.scan_backpack(window_rect, backpack_origin)
+                # 4. 检查数字模板
+                if not self.backpack_reader.digit_recognizer.is_loaded():
+                    loaded = len(self.backpack_reader.digit_recognizer.templates)
+                    self._log(f"错误: 数字模板未完整加载 (已加载{loaded}/10)，请在「设置」中截取0-9数字模板")
+                    break
+
+                # 5. 扫描背包格子
+                log_cw = cell_w or self.backpack_reader.settings.get('cell_width', 40)
+                log_ch = cell_h or self.backpack_reader.settings.get('cell_height', 40)
+                self._log(f"网格参数: 格子{log_cw}x{log_ch}, 起点{backpack_origin}")
+                slots = self.backpack_reader.scan_backpack(
+                    window_rect, backpack_origin, cell_w, cell_h)
+
+                empty_count = sum(1 for s in slots if s.is_empty)
                 items_with_qty = sum(1 for s in slots if s.quantity is not None)
-                self._log(f"扫描完成，发现 {items_with_qty} 种有数量的物品")
+                items_no_qty = sum(1 for s in slots if not s.is_empty and s.quantity is None)
+                self._log(f"扫描完成: {items_with_qty}个有数量, "
+                          f"{items_no_qty}个数量未识别, {empty_count}个空格子")
 
                 if self._check_stop():
                     break
 
-                # 5. 匹配每种材料
+                # 6. 匹配每种材料
                 matched_slots = []
                 all_matched = True
 
@@ -127,17 +153,17 @@ class CraftEngine:
                     mat_image_path = os.path.join(recipe_dir, mat['image_file'])
                     required_qty = mat['quantity']
 
-                    slot = self.backpack_reader.match_item(
+                    slot, info = self.backpack_reader.match_item(
                         slots, mat_image_path, required_qty
                     )
 
                     if slot is None:
-                        self._log(f"材料不足: 第{i+1}种材料 (需要 {required_qty} 个)")
+                        self._log(f"材料{i+1}(需{required_qty}个): {info}")
                         all_matched = False
                         break
 
                     matched_slots.append(slot)
-                    self._log(f"材料{i+1} 匹配成功: 格子({slot.grid_x},{slot.grid_y}) 数量:{slot.quantity}")
+                    self._log(f"材料{i+1}: {info}")
 
                 if not all_matched:
                     self._log("材料不足，暂停等待...")
@@ -148,15 +174,15 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 6. 点击匹配到的格子
-                cell_w = self.backpack_reader.settings.get('cell_width', 40)
-                cell_h = self.backpack_reader.settings.get('cell_height', 40)
+                # 7. 点击匹配到的格子
+                click_cw = cell_w or self.backpack_reader.settings.get('cell_width', 40)
+                click_ch = cell_h or self.backpack_reader.settings.get('cell_height', 40)
 
                 for slot in matched_slots:
                     if self._check_stop():
                         break
                     screen_x, screen_y = self.window_manager.grid_to_screen(
-                        slot.grid_x, slot.grid_y, backpack_origin, cell_w, cell_h
+                        slot.grid_x, slot.grid_y, backpack_origin, click_cw, click_ch
                     )
                     pyautogui.click(screen_x, screen_y)
                     time.sleep(0.3)

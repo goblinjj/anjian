@@ -19,6 +19,7 @@ DIGITS_DIR = os.path.join(TEMPLATES_DIR, 'digits')
 # 全局模板项配置
 TEMPLATE_ITEMS = [
     ('backpack_title_image', '背包定位', '用于在游戏窗口中定位背包位置'),
+    ('empty_cell_image', '空格子', '背包中一个完整空格子，自动检测格子大小'),
     ('execute_button_image', '执行按钮', '制造界面的「执行」按钮'),
     ('completion_image', '制造完成', '制造结束后出现的按钮'),
     ('organize_button_image', '整理背包', '背包界面的「整理」按钮'),
@@ -29,6 +30,7 @@ def load_settings():
     """加载全局设置"""
     defaults = {
         'backpack_title_image': '',
+        'empty_cell_image': '',
         'execute_button_image': '',
         'completion_image': '',
         'organize_button_image': '',
