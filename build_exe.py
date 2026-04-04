@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-按键小精灵打包脚本
+魔力宝贝制造助手打包脚本
 使用PyInstaller将程序打包成exe文件
 """
 
@@ -83,14 +83,19 @@ a = Analysis(
         'pyautogui',
         'keyboard',
         'main_gui',
-        'models',
-        'dialogs',
-        'execution_engine',
-        'ui_editors',
-        'file_manager',
+        'craft_engine',
+        'recipe_manager',
+        'recipe_dialog',
+        'settings_dialog',
+        'window_manager',
+        'backpack_reader',
+        'digit_recognizer',
         'hotkey_manager',
         'screenshot_util',
         'mss',
+        'win32gui',
+        'win32api',
+        'ctypes',
         'threading',
         'time',
         'json',
@@ -114,7 +119,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='按键小精灵',
+    name='魔力宝贝制造助手',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -176,14 +181,19 @@ def build_exe():
             "--hidden-import=tkinter.messagebox",
             "--hidden-import=tkinter.simpledialog",
             "--hidden-import=main_gui",
-            "--hidden-import=models",
-            "--hidden-import=dialogs",
-            "--hidden-import=execution_engine",
-            "--hidden-import=ui_editors",
-            "--hidden-import=file_manager",
+            "--hidden-import=craft_engine",
+            "--hidden-import=recipe_manager",
+            "--hidden-import=recipe_dialog",
+            "--hidden-import=settings_dialog",
+            "--hidden-import=window_manager",
+            "--hidden-import=backpack_reader",
+            "--hidden-import=digit_recognizer",
             "--hidden-import=hotkey_manager",
             "--hidden-import=screenshot_util",
             "--hidden-import=mss",
+            "--hidden-import=win32gui",
+            "--hidden-import=win32api",
+            "--hidden-import=ctypes",
             "--hidden-import=threading",
             "--hidden-import=time",
             "--hidden-import=json",
@@ -255,11 +265,11 @@ def safe_print(message):
 
 def main():
     """主函数"""
-    safe_print("Keymouse Spirit Build Script")
+    safe_print("Moli Craft Assistant Build Script")
     safe_print("=" * 50)
     
     # 检查当前目录
-    required_files = ['main_gui.py', 'start_gui.py', 'models.py', 'file_manager.py']
+    required_files = ['main_gui.py', 'start_gui.py', 'craft_engine.py', 'recipe_manager.py']
     for file in required_files:
         if not os.path.exists(file):
             safe_print(f"Error: Missing file {file}")
