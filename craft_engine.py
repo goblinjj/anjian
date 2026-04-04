@@ -92,11 +92,23 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
-                # 3. 定位背包
+                # 3. 定位背包（最多重试3次）
                 self._log("扫描背包...")
-                backpack_origin = self.backpack_reader.locate_backpack(window_rect)
+                backpack_origin = None
+                for attempt in range(3):
+                    if self._check_stop():
+                        break
+                    bx, by, info = self.backpack_reader.locate_backpack(window_rect)
+                    if bx is not None:
+                        backpack_origin = (bx, by)
+                        self._log(info)
+                        break
+                    if attempt < 2:
+                        self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
+                        time.sleep(1)
+                    else:
+                        self._log(f"定位背包失败: {info}")
                 if not backpack_origin:
-                    self._log("错误: 无法定位背包窗口")
                     break
 
                 # 4. 扫描背包格子

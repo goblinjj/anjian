@@ -307,14 +307,20 @@ class CraftAssistantGUI:
             bool: 是否成功
         """
         try:
+            # 先最小化主窗口，避免遮挡游戏画面
+            self.root.iconify()
+            self.root.update()
+            import time as _time
+            _time.sleep(0.3)  # 等待窗口最小化动画完成
+
+            # 截取全屏作为背景（在创建覆盖层之前）
+            screenshot = take_screenshot()
+
             # 创建全屏截图覆盖层
             overlay = tk.Toplevel(self.root)
             overlay.attributes('-fullscreen', True)
             overlay.attributes('-topmost', True)
             overlay.configure(cursor='cross')
-
-            # 截取全屏作为背景
-            screenshot = take_screenshot()
             from PIL import ImageTk
             bg_photo = ImageTk.PhotoImage(screenshot)
 
@@ -369,10 +375,12 @@ class CraftAssistantGUI:
 
             overlay.wait_window()
             screenshot.close()
+            self.root.deiconify()
             return state['success']
 
         except Exception as e:
             print(f"截图失败: {e}")
+            self.root.deiconify()
             return False
 
     # ── 日志 ──

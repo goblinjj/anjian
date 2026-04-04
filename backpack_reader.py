@@ -46,19 +46,24 @@ class BackpackReader:
         self.digit_recognizer = digit_recognizer
         self.settings = settings or {}
 
-    def locate_backpack(self, window_region):
+    def locate_backpack(self, window_region, confidence=0.7):
         """在窗口截图中定位背包
 
         Args:
             window_region: (left, top, width, height) 游戏窗口的屏幕区域
+            confidence: float 匹配置信度阈值
 
         Returns:
-            tuple: (backpack_x, backpack_y) 背包网格左上角的屏幕坐标，
-                   或 None 如果未找到
+            tuple: (backpack_x, backpack_y, info) 背包网格左上角的屏幕坐标和诊断信息，
+                   或 (None, None, error_msg) 如果未找到
         """
         title_image_path = self.settings.get('backpack_title_image')
         if not title_image_path:
-            return None
+            return (None, None, "未设置背包定位模板，请在「设置」中截取")
+
+        import os
+        if not os.path.exists(title_image_path):
+            return (None, None, f"模板文件不存在: {title_image_path}")
 
         # 截取游戏窗口区域
         screenshot = take_screenshot(region=window_region)
@@ -73,12 +78,20 @@ class BackpackReader:
         if len(tmpl.shape) == 3:
             tmpl = cv2.cvtColor(tmpl, cv2.COLOR_RGB2BGR)
 
+        # 检查模板尺寸是否合理
+        if tmpl.shape[0] > screenshot_bgr.shape[0] or tmpl.shape[1] > screenshot_bgr.shape[1]:
+            return (None, None,
+                    f"模板图片({tmpl.shape[1]}x{tmpl.shape[0]})大于窗口截图"
+                    f"({screenshot_bgr.shape[1]}x{screenshot_bgr.shape[0]})，请重新截取")
+
         # 模板匹配
         result = cv2.matchTemplate(screenshot_bgr, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-        if max_val < 0.7:
-            return None
+        if max_val < confidence:
+            return (None, None,
+                    f"匹配度不足: {max_val:.2f} (需要>={confidence})，"
+                    f"请确认背包窗口已打开，或在设置中重新截取模板")
 
         # 计算网格左上角的屏幕坐标
         tmpl_h = tmpl.shape[0]
@@ -89,7 +102,8 @@ class BackpackReader:
         grid_screen_x = win_left + max_loc[0] + offset_x
         grid_screen_y = win_top + max_loc[1] + tmpl_h + offset_y
 
-        return (grid_screen_x, grid_screen_y)
+        return (grid_screen_x, grid_screen_y,
+                f"匹配成功: 置信度{max_val:.2f}, 位置({grid_screen_x},{grid_screen_y})")
 
     def scan_backpack(self, window_region, backpack_origin):
         """扫描背包所有格子
