@@ -7,9 +7,12 @@
 """
 
 import os
+import logging
 import cv2
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger('digit_recognizer')
 
 
 class DigitRecognizer:
@@ -17,13 +20,15 @@ class DigitRecognizer:
 
     def __init__(self, templates_dir='templates/digits'):
         self.templates_dir = templates_dir
-        self.templates = {}  # {digit_int: numpy_array (binary)}
+        self.templates = {}       # {digit_int: CLAHE-enhanced gray numpy_array}
+        self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         self._load_templates()
 
     def _load_templates(self):
-        """加载 0-9 数字模板图片，转为二值化"""
+        """加载 0-9 数字模板图片，同时生成CLAHE增强版本"""
         if not os.path.exists(self.templates_dir):
             return
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
         for digit in range(10):
             path = os.path.join(self.templates_dir, f'{digit}.png')
             if os.path.exists(path):
@@ -32,23 +37,18 @@ class DigitRecognizer:
                 pil_img.close()
                 if len(img.shape) == 3:
                     img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-                # 二值化：Otsu自动阈值
-                _, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                self.templates[digit] = binary
+                self.templates[digit] = clahe.apply(img)
 
-    def _binarize(self, gray_image):
-        """将灰度图二值化"""
-        _, binary = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return binary
-
-    def recognize(self, region_image, confidence=0.6):
+    def recognize(self, region_image, confidence=0.6, debug_label=''):
         """识别图片区域中的数字
 
-        从左到右扫描，逐位匹配数字模板。
+        在灰度图上用模板匹配，从左到右逐位识别。
+        自动添加边距防止边缘数字被截断。
 
         Args:
             region_image: numpy array (BGR 或灰度), 包含数字的图片区域
             confidence: 匹配置信度阈值
+            debug_label: 调试标签，用于日志输出
 
         Returns:
             int or None: 识别到的数字, 没有识别到返回 None
@@ -56,48 +56,81 @@ class DigitRecognizer:
         if len(self.templates) == 0:
             return None
 
-        # 转为灰度再二值化
+        # 转为灰度 + CLAHE增强对比度
         if len(region_image.shape) == 3:
             gray = cv2.cvtColor(region_image, cv2.COLOR_BGR2GRAY)
         else:
             gray = region_image.copy()
+        gray = self._clahe.apply(gray)
 
-        binary = self._binarize(gray)
+        # 添加边距：用边缘颜色填充，防止数字被截断时匹配失败
+        pad = 4
+        bg_val = int(np.median(np.concatenate([
+            gray[0, :], gray[-1, :], gray[:, 0], gray[:, -1]
+        ])))
+        padded = cv2.copyMakeBorder(
+            gray, pad, pad, pad, pad,
+            cv2.BORDER_CONSTANT, value=bg_val)
 
-        digits_found = []  # [(x_position, digit_value, confidence)]
-        h, w = binary.shape
+        h, w = padded.shape
+
+        # 获取模板典型宽度（用于去重间距）
+        tmpl_widths = [t.shape[1] for t in self.templates.values()]
+        avg_tw = sum(tmpl_widths) / len(tmpl_widths) if tmpl_widths else 10
+
+        # 在灰度图上匹配每个数字模板
+        all_matches = []  # [(x_position, digit, confidence)]
 
         for digit, tmpl in self.templates.items():
             th, tw = tmpl.shape
             if th > h or tw > w:
                 continue
 
-            result = cv2.matchTemplate(binary, tmpl, cv2.TM_CCOEFF_NORMED)
+            result = cv2.matchTemplate(padded, tmpl, cv2.TM_CCOEFF_NORMED)
             locations = np.where(result >= confidence)
 
             for idx in range(len(locations[0])):
                 pt_x = locations[1][idx]
                 pt_y = locations[0][idx]
                 match_val = result[pt_y, pt_x]
+                all_matches.append((pt_x, digit, float(match_val)))
 
-                # 去重: 如果附近已有更高置信度的识别结果，跳过
-                is_duplicate = False
-                for i, (existing_x, _, existing_conf) in enumerate(digits_found):
-                    if abs(pt_x - existing_x) < tw * 0.6:
-                        # 保留置信度更高的
-                        if match_val > existing_conf:
-                            digits_found[i] = (pt_x, digit, match_val)
-                        is_duplicate = True
-                        break
-                if not is_duplicate:
-                    digits_found.append((pt_x, digit, match_val))
+        if debug_label:
+            match_summary = [(x, d, f'{c:.2f}') for x, d, c in all_matches]
+            logger.info(f'{debug_label} 原始匹配({len(all_matches)}个): '
+                        f'{match_summary}')
 
-        if not digits_found:
+        if not all_matches:
+            if debug_label:
+                logger.info(f'{debug_label} 无匹配 (阈值={confidence})')
             return None
 
-        # 按 x 坐标排序，组合成数字
-        digits_found.sort(key=lambda x: x[0])
-        number_str = ''.join(str(d) for _, d, _ in digits_found)
+        # 去重：按x排序后，在每个位置区间内保留最高置信度的匹配
+        # 最小间距 = 模板宽度的50%
+        min_spacing = avg_tw * 0.5
+        all_matches.sort(key=lambda m: (-m[2]))  # 按置信度降序
+
+        selected = []  # [(x_position, digit, confidence)]
+        for x, digit, conf in all_matches:
+            conflict = False
+            for sx, _, _ in selected:
+                if abs(x - sx) < min_spacing:
+                    conflict = True
+                    break
+            if not conflict:
+                selected.append((x, digit, conf))
+
+        # 按x坐标排序
+        selected.sort(key=lambda m: m[0])
+
+        if debug_label:
+            logger.info(f'{debug_label} 去重后: '
+                        f'{[(x, d, f"{c:.2f}") for x, d, c in selected]}')
+
+        # 组合成数字
+        number_str = ''.join(str(d) for _, d, _ in selected)
+        if debug_label:
+            logger.info(f'{debug_label} 识别结果: {number_str}')
 
         try:
             return int(number_str)

@@ -38,7 +38,8 @@ class CraftAssistantGUI:
         self.recipe_manager = RecipeManager('recipes')
         self.window_manager = WindowManager()
         self.digit_recognizer = DigitRecognizer('templates/digits')
-        self.backpack_reader = BackpackReader(self.digit_recognizer, self.settings)
+        self.backpack_reader = BackpackReader(
+            self.digit_recognizer, self.settings, self._log_message)
         self.craft_engine = CraftEngine(
             self.window_manager, self.backpack_reader, self._log_message
         )
@@ -291,7 +292,8 @@ class CraftAssistantGUI:
             self.settings = dialog.result
             # 重新初始化依赖设置的组件
             self.digit_recognizer = DigitRecognizer('templates/digits')
-            self.backpack_reader = BackpackReader(self.digit_recognizer, self.settings)
+            self.backpack_reader = BackpackReader(
+                self.digit_recognizer, self.settings, self._log_message)
             self.craft_engine = CraftEngine(
                 self.window_manager, self.backpack_reader, self._log_message
             )

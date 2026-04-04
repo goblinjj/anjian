@@ -7,10 +7,13 @@
 """
 
 import os
+import logging
 import cv2
 import numpy as np
 from PIL import Image
 from screenshot_util import take_screenshot
+
+logger = logging.getLogger('backpack_reader')
 
 
 # 背包网格常量
@@ -53,9 +56,16 @@ class GridInfo:
 class BackpackReader:
     """背包读取器"""
 
-    def __init__(self, digit_recognizer, settings=None):
+    def __init__(self, digit_recognizer, settings=None, log_callback=None):
         self.digit_recognizer = digit_recognizer
         self.settings = settings or {}
+        self.log_callback = log_callback
+
+    def _log(self, message):
+        """输出日志到回调和logging"""
+        logger.info(message)
+        if self.log_callback:
+            self.log_callback(message)
 
     def _load_template(self, path):
         pil_img = Image.open(path)
@@ -198,6 +208,7 @@ class BackpackReader:
             empty_tmpl = self._load_template(empty_path)
 
         has_digits = self.digit_recognizer.is_loaded()
+        logger.debug(f"数字模板已加载: {has_digits}")
 
         # 数字区域：从设置读取，默认底部居中
         dr = self.settings.get('digit_region', {})
@@ -205,6 +216,12 @@ class BackpackReader:
         digit_ry = dr.get('y', cell_h - 20 - 1)
         digit_rw = dr.get('w', 30)
         digit_rh = dr.get('h', 20)
+        logger.debug(f"数字识别区域: x={digit_rx}, y={digit_ry}, "
+                     f"w={digit_rw}, h={digit_rh} (格子{cell_w}x{cell_h})")
+
+        count_with_qty = 0
+        count_no_qty = 0
+        count_empty = 0
 
         slots = []
         for row in range(GRID_ROWS):
@@ -225,12 +242,14 @@ class BackpackReader:
 
                 # 空格子判断
                 is_empty = False
+                empty_conf = 0.0
                 if empty_tmpl is not None:
                     eh, ew = empty_tmpl.shape[:2]
                     if cell_img.shape[0] >= eh and cell_img.shape[1] >= ew:
                         mr = cv2.matchTemplate(
                             cell_img, empty_tmpl, cv2.TM_CCOEFF_NORMED)
                         _, mv, _, _ = cv2.minMaxLoc(mr)
+                        empty_conf = mv
                         is_empty = mv >= 0.85
 
                 # 数字识别
@@ -244,7 +263,19 @@ class BackpackReader:
                             digit_ry : digit_ry + digit_rh,
                             digit_rx : digit_rx + digit_rw
                         ].copy()
-                        quantity = self.digit_recognizer.recognize(digit_img)
+                        label = f'({col},{row})' if debug else ''
+                        quantity = self.digit_recognizer.recognize(
+                            digit_img, debug_label=label)
+
+                # 记录结果
+                if is_empty:
+                    count_empty += 1
+                elif quantity is not None:
+                    count_with_qty += 1
+                else:
+                    count_no_qty += 1
+                    logger.info(f"  格子({col},{row}): 数量未识别 "
+                                f"(空格子置信度:{empty_conf:.2f})")
 
                 if debug:
                     name = f'cell_{row}_{col}'
@@ -266,6 +297,8 @@ class BackpackReader:
                     col, row, center_x, center_y,
                     cell_img, quantity, is_empty))
 
+        self._log(f"扫描完成: {count_with_qty}个有数量, "
+                  f"{count_no_qty}个数量未识别, {count_empty}个空格子")
         return slots
 
     def match_item(self, slots, material_image_path, required_quantity,
