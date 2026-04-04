@@ -256,14 +256,17 @@ class CraftEngine:
         result = cv2.matchTemplate(screen_bgr, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
+        name = os.path.basename(template_path)
         if max_val >= 0.7:
             th, tw = tmpl.shape[:2]
             click_x = window_rect[0] + max_loc[0] + tw // 2
             click_y = window_rect[1] + max_loc[1] + th // 2
+            self._log(f"[点击] {name} 置信度:{max_val:.2f} 坐标:({click_x},{click_y})")
             pyautogui.moveTo(click_x, click_y)
-            time.sleep(0.15)
+            time.sleep(0.2)
             pyautogui.click()
             return True
+        self._log(f"[点击] {name} 未找到，最高置信度:{max_val:.2f}")
         return False
 
     def _wait_for_template(self, template_path, window_rect, timeout=30):
