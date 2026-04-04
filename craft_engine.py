@@ -77,6 +77,8 @@ class CraftEngine:
 
             execute_button_path = settings.get('execute_button_image')
             completion_image_path = settings.get('completion_image')
+            click_pre_delay = settings.get('click_pre_delay', 200) / 1000.0
+            click_interval = settings.get('click_interval', 100) / 1000.0
             organize_button_path = settings.get('organize_button_image')
             recipe_dir = settings.get('recipe_dir', '')
 
@@ -165,12 +167,16 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 7. 点击匹配到的格子（使用格子的屏幕坐标）
+                # 7. 双击匹配到的格子（移动→等待→单击→间隔→单击）
                 for slot in matched_slots:
                     if self._check_stop():
                         break
-                    pyautogui.click(slot.screen_x, slot.screen_y)
-                    time.sleep(0.8)
+                    pyautogui.moveTo(slot.screen_x, slot.screen_y)
+                    time.sleep(click_pre_delay)
+                    pyautogui.click()
+                    time.sleep(click_interval)
+                    pyautogui.click()
+                    time.sleep(0.3)
 
                 if self._check_stop():
                     break

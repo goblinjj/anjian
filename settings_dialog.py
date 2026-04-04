@@ -41,6 +41,8 @@ def load_settings():
         'grid_offset_y': 0,
         'digit_region': {'x': 20, 'y': 26, 'w': 20, 'h': 14},
         'icon_region': {'x': 2, 'y': 2, 'w': 36, 'h': 36},
+        'click_pre_delay': 200,
+        'click_interval': 100,
     }
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -191,6 +193,20 @@ class SettingsDialog:
         # 其他设置区
         other_label = ttk.LabelFrame(main_frame, text="其他设置", padding=10)
         other_label.pack(fill=tk.X, pady=(0, 10))
+
+        # 点击延迟
+        click_row = ttk.Frame(other_label)
+        click_row.pack(fill=tk.X, pady=3)
+        ttk.Label(click_row, text="点击前延迟:", width=14).pack(side=tk.LEFT)
+        self.click_pre_var = tk.IntVar(value=self.settings.get('click_pre_delay', 200))
+        ttk.Spinbox(click_row, from_=0, to=2000, increment=50,
+                    textvariable=self.click_pre_var, width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(click_row, text="ms").pack(side=tk.LEFT)
+        ttk.Label(click_row, text="双击间隔:", width=10).pack(side=tk.LEFT, padx=(10, 0))
+        self.click_int_var = tk.IntVar(value=self.settings.get('click_interval', 100))
+        ttk.Spinbox(click_row, from_=0, to=2000, increment=50,
+                    textvariable=self.click_int_var, width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(click_row, text="ms (移动→等待→单击→间隔→单击)", foreground='gray').pack(side=tk.LEFT)
 
         # 窗口标题关键字
         title_row = ttk.Frame(other_label)
@@ -392,6 +408,8 @@ class SettingsDialog:
             'w': self.digit_w_var.get(),
             'h': self.digit_h_var.get(),
         }
+        self.settings['click_pre_delay'] = self.click_pre_var.get()
+        self.settings['click_interval'] = self.click_int_var.get()
         save_settings(self.settings)
         self.result = self.settings
         self.dialog.destroy()
