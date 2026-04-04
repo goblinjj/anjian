@@ -181,23 +181,29 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 7. 点击执行按钮
+                # 8. 点击执行按钮
                 self._log("点击执行...")
                 if execute_button_path:
                     self._click_template(execute_button_path, window_rect)
-                time.sleep(0.5)
+                time.sleep(0.3)
 
-                # 8. 等待制造完成
+                # 鼠标移开，避免遮挡按钮影响图像识别
+                pyautogui.moveTo(0, 0)
+                time.sleep(0.2)
+
+                # 9. 等待制造完成
                 self._log(f"等待制造完成...")
                 if completion_image_path:
                     completed = self._wait_for_template(
                         completion_image_path, window_rect, timeout=wait_time + 30
                     )
                     if completed and not self._check_stop():
-                        # 9. 点击完成按钮
+                        # 10. 点击完成按钮
                         self._log("制造完成，点击确认...")
                         self._click_template(completion_image_path, window_rect)
+                        pyautogui.moveTo(0, 0)
                         self.success_count += 1
+                        time.sleep(1.0)  # 等待画面恢复到背包界面
                     else:
                         self.fail_count += 1
                 else:
