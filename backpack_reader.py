@@ -90,18 +90,13 @@ class BackpackReader:
         return (grid_screen_x, grid_screen_y,
                 f"标题定位成功: 置信度{max_val:.2f}, 位置({grid_screen_x},{grid_screen_y})")
 
-    def detect_grid(self, window_region, confidence=0.8):
-        """使用空格子模板自动检测网格布局
+    def get_cell_size(self):
+        """从空格子模板获取格子尺寸
 
-        模板的宽高即为格子尺寸，通过匹配找到空格子位置确定网格起点。
-
-        Args:
-            window_region: (left, top, width, height) 游戏窗口区域
-            confidence: 匹配置信度
+        模板图片的宽高即为格子的宽高。
 
         Returns:
-            dict: {'origin': (x,y), 'cell_width': w, 'cell_height': h, ...}
-            或 None
+            tuple: (cell_width, cell_height) 或 None
         """
         empty_cell_path = self.settings.get('empty_cell_image')
         if not empty_cell_path or not os.path.exists(empty_cell_path):
@@ -110,53 +105,10 @@ class BackpackReader:
         tmpl = self._load_template(empty_cell_path)
         cell_h, cell_w = tmpl.shape[:2]
 
-        # 模板太小说明截取有误
         if cell_w < 15 or cell_h < 15:
             return None
 
-        screenshot = take_screenshot(region=window_region)
-        screen_np = np.array(screenshot)
-        screenshot.close()
-        screen_bgr = cv2.cvtColor(screen_np, cv2.COLOR_RGB2BGR)
-
-        if cell_h > screen_bgr.shape[0] or cell_w > screen_bgr.shape[1]:
-            return None
-
-        result = cv2.matchTemplate(screen_bgr, tmpl, cv2.TM_CCOEFF_NORMED)
-        locations = np.where(result >= confidence)
-
-        if len(locations[0]) == 0:
-            return None
-
-        # 去重：合并相邻匹配点（距离小于格子尺寸一半的视为同一格子）
-        points = sorted(zip(locations[1].tolist(), locations[0].tolist()))
-        cells = []
-        for x, y in points:
-            is_dup = False
-            for cx, cy in cells:
-                if abs(x - cx) < cell_w * 0.5 and abs(y - cy) < cell_h * 0.5:
-                    is_dup = True
-                    break
-            if not is_dup:
-                cells.append((x, y))
-
-        if not cells:
-            return None
-
-        # 最左上角的空格子位置即为网格起点（不做反推，避免负坐标）
-        min_x = min(c[0] for c in cells)
-        min_y = min(c[1] for c in cells)
-
-        win_left, win_top = window_region[0], window_region[1]
-
-        return {
-            'origin': (win_left + min_x, win_top + min_y),
-            'cell_width': cell_w,
-            'cell_height': cell_h,
-            'empty_count': len(cells),
-            'info': f"网格检测: 格子{cell_w}x{cell_h}, {len(cells)}个空格子, "
-                    f"起点({win_left + min_x},{win_top + min_y})"
-        }
+        return (cell_w, cell_h)
 
     def scan_backpack(self, window_region, backpack_origin,
                       cell_w=None, cell_h=None):

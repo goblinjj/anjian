@@ -112,14 +112,13 @@ class CraftEngine:
                 if not backpack_origin:
                     break
 
-                # 4. 用空格子模板检测格子大小（可选）
+                # 4. 用空格子模板获取格子大小（可选）
                 cell_w = None
                 cell_h = None
-                grid_info = self.backpack_reader.detect_grid(window_rect)
-                if grid_info:
-                    cell_w = grid_info['cell_width']
-                    cell_h = grid_info['cell_height']
-                    self._log(f"格子大小自动检测: {cell_w}x{cell_h}")
+                cell_size = self.backpack_reader.get_cell_size()
+                if cell_size:
+                    cell_w, cell_h = cell_size
+                    self._log(f"格子大小: {cell_w}x{cell_h} (来自空格子模板)")
 
                 # 4. 检查数字模板
                 if not self.backpack_reader.digit_recognizer.is_loaded():
