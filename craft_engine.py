@@ -170,7 +170,7 @@ class CraftEngine:
                     if self._check_stop():
                         break
                     pyautogui.click(slot.screen_x, slot.screen_y)
-                    time.sleep(0.3)
+                    time.sleep(0.8)
 
                 if self._check_stop():
                     break
