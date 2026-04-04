@@ -68,19 +68,19 @@ SHA256: {sha256_hash}
 验证方法:
 --------
 Windows PowerShell:
-Get-FileHash -Algorithm MD5 "按键小精灵.exe"
-Get-FileHash -Algorithm SHA1 "按键小精灵.exe"  
-Get-FileHash -Algorithm SHA256 "按键小精灵.exe"
+Get-FileHash -Algorithm MD5 "魔力宝贝制造助手.exe"
+Get-FileHash -Algorithm SHA1 "魔力宝贝制造助手.exe"  
+Get-FileHash -Algorithm SHA256 "魔力宝贝制造助手.exe"
 
 Windows CMD:
-certutil -hashfile "按键小精灵.exe" MD5
-certutil -hashfile "按键小精灵.exe" SHA1
-certutil -hashfile "按键小精灵.exe" SHA256
+certutil -hashfile "魔力宝贝制造助手.exe" MD5
+certutil -hashfile "魔力宝贝制造助手.exe" SHA1
+certutil -hashfile "魔力宝贝制造助手.exe" SHA256
 
 Linux/macOS:
-md5sum "按键小精灵.exe"
-sha1sum "按键小精灵.exe"
-sha256sum "按键小精灵.exe"
+md5sum "魔力宝贝制造助手.exe"
+sha1sum "魔力宝贝制造助手.exe"
+sha256sum "魔力宝贝制造助手.exe"
 
 在线验证:
 上传到 https://www.virustotal.com/ 进行多引擎安全扫描
@@ -101,7 +101,7 @@ sha256sum "按键小精灵.exe"
 
 def main():
     """主函数"""
-    exe_path = "dist/按键小精灵.exe"
+    exe_path = "dist/魔力宝贝制造助手.exe"
     
     if os.path.exists(exe_path):
         generate_hash_file(exe_path)
