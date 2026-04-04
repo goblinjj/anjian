@@ -61,20 +61,22 @@ def save_settings(settings):
 class SettingsDialog:
     """全局设置对话框"""
 
-    def __init__(self, parent, screenshot_callback):
+    def __init__(self, parent, screenshot_callback, window_manager=None):
         """
         Args:
             parent: 父窗口
             screenshot_callback: 截图回调函数, 参数为 save_path, 返回 bool
+            window_manager: WindowManager 实例（用于测试定位）
         """
         self.result = None
         self.screenshot_callback = screenshot_callback
+        self.window_manager = window_manager
         self.settings = load_settings()
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("设置")
-        self.dialog.geometry("500x550")
-        self.dialog.resizable(False, False)
+        self.dialog.geometry("520x650")
+        self.dialog.resizable(False, True)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
@@ -129,6 +131,30 @@ class SettingsDialog:
                   command=self._capture_digits).pack(side=tk.LEFT, padx=5)
         ttk.Label(digit_row, text="逐个截取0-9数字", foreground='gray').pack(side=tk.LEFT, padx=5)
 
+        # 网格定位区
+        grid_label = ttk.LabelFrame(main_frame, text="网格定位 (相对于背包定位模板)", padding=10)
+        grid_label.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(grid_label, text="调整偏移量使红色网格线对齐背包格子边界",
+                  foreground='gray').pack(anchor=tk.W, pady=(0, 5))
+
+        offset_row = ttk.Frame(grid_label)
+        offset_row.pack(fill=tk.X, pady=3)
+        ttk.Label(offset_row, text="X偏移:").pack(side=tk.LEFT)
+        self.offset_x_var = tk.IntVar(value=self.settings.get('grid_offset_x', 0))
+        ttk.Spinbox(offset_row, from_=-200, to=200,
+                    textvariable=self.offset_x_var, width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(offset_row, text="Y偏移:").pack(side=tk.LEFT, padx=(10, 0))
+        self.offset_y_var = tk.IntVar(value=self.settings.get('grid_offset_y', 0))
+        ttk.Spinbox(offset_row, from_=-200, to=200,
+                    textvariable=self.offset_y_var, width=6).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(offset_row, text="测试定位", width=8,
+                  command=self._test_grid).pack(side=tk.LEFT, padx=15)
+
+        self.grid_test_label = ttk.Label(grid_label, text="", foreground='gray')
+        self.grid_test_label.pack(anchor=tk.W, pady=3)
+
         # 其他设置区
         other_label = ttk.LabelFrame(main_frame, text="其他设置", padding=10)
         other_label.pack(fill=tk.X, pady=(0, 10))
@@ -140,7 +166,7 @@ class SettingsDialog:
         self.title_var = tk.StringVar(value=self.settings.get('window_title_keyword', 'QI魔力'))
         ttk.Entry(title_row, textvariable=self.title_var, width=20).pack(side=tk.LEFT, padx=5)
 
-        # 格子尺寸
+        # 格子尺寸（有空格子模板时自动获取）
         size_row = ttk.Frame(other_label)
         size_row.pack(fill=tk.X, pady=3)
         ttk.Label(size_row, text="格子宽度:", width=14).pack(side=tk.LEFT)
@@ -149,6 +175,7 @@ class SettingsDialog:
         ttk.Label(size_row, text="高度:").pack(side=tk.LEFT, padx=(10, 0))
         self.cell_h_var = tk.IntVar(value=self.settings.get('cell_height', 40))
         ttk.Spinbox(size_row, from_=20, to=100, textvariable=self.cell_h_var, width=6).pack(side=tk.LEFT, padx=5)
+        ttk.Label(size_row, text="(有空格子模板时自动检测)", foreground='gray').pack(side=tk.LEFT, padx=5)
 
         # 按钮
         btn_frame = ttk.Frame(main_frame)
@@ -195,9 +222,52 @@ class SettingsDialog:
         if digits_exist:
             self.digit_status_label.config(text="已设置 ✓")
 
+    def _test_grid(self):
+        """测试网格定位，生成带网格线的截图"""
+        if not self.window_manager or not self.window_manager.is_window_valid():
+            self.grid_test_label.config(
+                text="请先绑定游戏窗口", foreground='red')
+            return
+
+        # 用当前界面上的值（不需要先保存）
+        self.settings['grid_offset_x'] = self.offset_x_var.get()
+        self.settings['grid_offset_y'] = self.offset_y_var.get()
+        self.settings['cell_width'] = self.cell_w_var.get()
+        self.settings['cell_height'] = self.cell_h_var.get()
+
+        self.grid_test_label.config(text="正在测试...", foreground='orange')
+        self.dialog.update()
+
+        try:
+            from backpack_reader import BackpackReader
+            from digit_recognizer import DigitRecognizer
+
+            reader = BackpackReader(
+                DigitRecognizer('templates/digits'), self.settings)
+
+            window_rect = self.window_manager.get_window_rect()
+            if not window_rect:
+                self.grid_test_label.config(
+                    text="无法获取窗口坐标", foreground='red')
+                return
+
+            save_path, info = reader.test_grid_overlay(window_rect)
+            if save_path:
+                self.grid_test_label.config(
+                    text=f"已保存到 {save_path}，请查看红色网格线是否对齐",
+                    foreground='green')
+            else:
+                self.grid_test_label.config(text=info, foreground='red')
+
+        except Exception as e:
+            self.grid_test_label.config(
+                text=f"测试出错: {str(e)}", foreground='red')
+
     def _save(self):
         """保存设置"""
         self.settings['window_title_keyword'] = self.title_var.get()
+        self.settings['grid_offset_x'] = self.offset_x_var.get()
+        self.settings['grid_offset_y'] = self.offset_y_var.get()
         self.settings['cell_width'] = self.cell_w_var.get()
         self.settings['cell_height'] = self.cell_h_var.get()
         save_settings(self.settings)

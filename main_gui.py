@@ -286,7 +286,7 @@ class CraftAssistantGUI:
 
     def _open_settings(self):
         """打开设置对话框"""
-        dialog = SettingsDialog(self.root, self._screenshot_region)
+        dialog = SettingsDialog(self.root, self._screenshot_region, self.window_manager)
         if dialog.result:
             self.settings = dialog.result
             # 重新初始化依赖设置的组件
