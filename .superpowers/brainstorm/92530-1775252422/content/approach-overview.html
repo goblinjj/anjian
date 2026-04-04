@@ -1,0 +1,66 @@
+<h2>魔力宝贝制造自动化 — 方案对比</h2>
+<p class="subtitle">核心需求：识别背包物品及数量，智能选择材料，自动循环制造</p>
+
+<div class="section">
+<h3>完整流程</h3>
+<div class="mockup">
+<div class="mockup-header">自动制造循环</div>
+<div class="mockup-body" style="padding:20px;font-size:14px;line-height:2;">
+  <div style="display:flex;align-items:flex-start;gap:30px;">
+    <div style="flex:1;">
+      <strong>1. 扫描背包</strong><br>
+      截取背包区域 → 逐格识别物品图标 + 右下角数量<br><br>
+      <strong>2. 匹配材料</strong><br>
+      对每种配方材料，找到图标匹配且数量 ≥ 需求的格子<br><br>
+      <strong>3. 点击选择</strong><br>
+      依次点击匹配到的格子<br><br>
+      <strong>4. 点击执行</strong><br>
+      点击「执行」按钮<br><br>
+      <strong>5. 等待完成</strong><br>
+      等待可配置时间 + 检测完成按钮图片<br><br>
+      <strong>6. 点击完成按钮</strong><br>
+      关闭结果，回到步骤 1
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+<h3>两种实现方案</h3>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>新增「魔力制造」专用模块（推荐）</h3>
+      <p>在现有项目中新增独立模块，专门处理魔力宝贝制造逻辑</p>
+      <ul style="margin:8px 0;font-size:13px;color:#bbb;">
+        <li><strong>backpack_reader.py</strong> — 背包网格解析：切割20个格子、物品图标匹配、数字模板匹配</li>
+        <li><strong>craft_engine.py</strong> — 制造引擎：配方配置、材料匹配策略、制造循环控制</li>
+        <li><strong>digit_recognizer.py</strong> — 数字识别：0-9模板图片管理、数量读取</li>
+        <li>在主GUI中新增一个「魔力制造」标签页用于配方配置和启动</li>
+      </ul>
+      <div class="pros-cons" style="margin-top:10px;">
+        <div class="pros"><h4>优势</h4><ul><li>模块清晰，不影响原有通用功能</li><li>可独立测试每个组件</li><li>易于后续扩展其他游戏功能</li></ul></div>
+        <div class="cons"><h4>劣势</h4><ul><li>需要新增较多代码</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>扩展现有步骤系统</h3>
+      <p>在现有的步骤类型中新增「背包扫描」和「智能选择」步骤类型</p>
+      <ul style="margin:8px 0;font-size:13px;color:#bbb;">
+        <li>新增 <code>backpack_scan</code> 步骤类型 — 扫描背包并记录物品信息</li>
+        <li>新增 <code>smart_select</code> 步骤类型 — 根据配方需求智能选择格子</li>
+        <li>用户通过现有的步骤编排系统组合流程</li>
+      </ul>
+      <div class="pros-cons" style="margin-top:10px;">
+        <div class="pros"><h4>优势</h4><ul><li>复用现有UI和执行引擎</li><li>灵活性高，用户可自由编排</li></ul></div>
+        <div class="cons"><h4>劣势</h4><ul><li>配置复杂，用户每次都要手动编排多个步骤</li><li>步骤间数据传递需要额外处理</li><li>不如专用界面直观</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

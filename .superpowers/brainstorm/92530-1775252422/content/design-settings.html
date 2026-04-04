@@ -1,0 +1,83 @@
+<h2>全局设置对话框</h2>
+<p class="subtitle">管理通用图片模板和全局参数</p>
+
+<div class="section">
+<div class="mockup">
+<div class="mockup-header">设置对话框</div>
+<div class="mockup-body" style="padding:24px;font-size:13px;line-height:1.8;">
+<pre style="color:#e0e0e0;font-family:monospace;font-size:13px;">
+┌──────────────────────────────────────────────┐
+│  设置                                 [×]    │
+│                                              │
+│  ── 图片模板 ──                               │
+│                                              │
+│  背包定位:    [已设置 ✓]  [重新截图]           │
+│  (用于在游戏窗口中定位背包位置)                │
+│                                              │
+│  执行按钮:    [已设置 ✓]  [重新截图]           │
+│  (制造界面的「执行」按钮)                      │
+│                                              │
+│  制造完成:    [未设置 ✗]  [截图]               │
+│  (制造结束后出现的按钮)                        │
+│                                              │
+│  整理背包:    [已设置 ✓]  [重新截图]           │
+│  (背包界面的「整理」按钮)                      │
+│                                              │
+│  ── 数字模板 ──                               │
+│                                              │
+│  0-9模板:     [已设置 ✓]  [重新截取]           │
+│  (背包物品数量识别用)                          │
+│                                              │
+│  ── 其他设置 ──                               │
+│                                              │
+│  窗口标题关键字: [QI魔力              ]        │
+│  热键-开始/停止: [`]                           │
+│                                              │
+│              [保存]    [取消]                  │
+└──────────────────────────────────────────────┘
+</pre>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>更新后的主界面</h3>
+<div class="mockup">
+<div class="mockup-header">主窗口 — 新增设置按钮</div>
+<div class="mockup-body" style="padding:24px;font-size:13px;line-height:1.8;">
+<pre style="color:#e0e0e0;font-family:monospace;font-size:13px;">
+┌──────────────────────────────────────────────────────────┐
+│  魔力宝贝制造助手                     [设置]    [─][□][×]│
+├──────────────────────────────────────────────────────────┤
+│  游戏窗口: 已绑定 (句柄:0x1A2B)   [点击选择窗口]         │
+├────────────────┬─────────────────────────────────────────┤
+│  配方列表       │  制造控制                               │
+│  ...           │  ...                                    │
+</pre>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>存储结构更新</h3>
+<div class="mockup">
+<div class="mockup-body" style="padding:20px;font-size:13px;">
+<pre style="color:#e0e0e0;font-family:monospace;">
+项目根目录/
+├── settings.json            # 全局设置 (窗口标题、热键等)
+├── templates/               # 全局图片模板
+│   ├── backpack_title.png   # 背包定位图片
+│   ├── execute_button.png   # 执行按钮图片
+│   ├── completion.png       # 制造完成按钮图片
+│   ├── organize_button.png  # 整理背包按钮图片
+│   └── digits/              # 0-9 数字模板
+│       ├── 0.png
+│       ├── 1.png
+│       └── ...9.png
+├── recipes/                 # 配方数据
+│   └── .../
+└── ...
+</pre>
+</div>
+</div>
+</div>
