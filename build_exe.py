@@ -52,7 +52,7 @@ def create_spec_file():
     
     # 查找文档文件和配置文件
     doc_files = []
-    for doc in ['README.md', 'requirements.txt', 'GUI_README.md', '使用说明.md', 'default.json']:
+    for doc in ['README.md', 'requirements.txt', '使用说明.md']:
         if os.path.exists(doc):
             doc_files.append(f"('{doc}', '.')")
     
@@ -158,7 +158,7 @@ def build_exe():
             sys.executable, "-m", "PyInstaller",
             "--onefile",
             "--windowed",
-            "--name=按键小精灵",
+            "--name=魔力宝贝制造助手",
             "--icon=logo.ico",
             # 添加版本信息
             *version_param,
@@ -168,7 +168,6 @@ def build_exe():
             "--noconfirm",  # 自动确认覆盖
             # 添加数据文件
             "--add-data=*.png;.",
-            "--add-data=*.json;.",
             # 隐藏导入
             "--hidden-import=PIL._tkinter_finder",
             "--hidden-import=cv2",
@@ -204,7 +203,7 @@ def build_exe():
         
         if result.returncode == 0:
             safe_print("Build successful!")
-            safe_print("exe file location: dist/按键小精灵.exe")
+            safe_print("exe file location: dist/魔力宝贝制造助手.exe")
             
             # 复制图片文件和配置文件到dist目录
             dist_dir = os.path.join("dist")
@@ -220,15 +219,6 @@ def build_exe():
                         except Exception as e:
                             safe_print(f"Failed to copy file {file}: {e}")
                 
-                # 复制配置文件
-                for config_file in ['default.json', '示例配置.json']:
-                    if os.path.exists(config_file):
-                        try:
-                            shutil.copy2(config_file, dist_dir)
-                            safe_print(f"Copied config file {config_file} to dist directory")
-                        except Exception as e:
-                            safe_print(f"Failed to copy config file {config_file}: {e}")
-            
             return True
         else:
             safe_print("Build failed:")
