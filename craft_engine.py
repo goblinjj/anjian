@@ -188,7 +188,7 @@ class CraftEngine:
                 time.sleep(0.3)
 
                 # 鼠标移开，避免遮挡按钮影响图像识别
-                pyautogui.moveTo(0, 0)
+                pyautogui.moveTo(100, 100)
                 time.sleep(0.2)
 
                 # 9. 等待制造完成
@@ -201,7 +201,7 @@ class CraftEngine:
                         # 10. 点击完成按钮
                         self._log("制造完成，点击确认...")
                         self._click_template(completion_image_path, window_rect)
-                        pyautogui.moveTo(0, 0)
+                        pyautogui.moveTo(100, 100)
                         self.success_count += 1
                         time.sleep(1.0)  # 等待画面恢复到背包界面
                     else:
