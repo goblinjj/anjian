@@ -199,11 +199,11 @@ class BackpackReader:
 
         has_digits = self.digit_recognizer.is_loaded()
 
-        # 数字区域：格子右下角
-        digit_rw = 20
-        digit_rh = 14
-        digit_rx = cell_w - digit_rw
-        digit_ry = cell_h - digit_rh
+        # 数字区域：格子底部居中（数字在格子下方中间位置）
+        digit_rw = cell_w - 10   # 左右各留5px边距
+        digit_rh = 16
+        digit_rx = 5
+        digit_ry = cell_h - digit_rh - 2  # 底部留2px边距
 
         slots = []
         for row in range(GRID_ROWS):
