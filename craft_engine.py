@@ -220,7 +220,7 @@ class CraftEngine:
                 if organize_interval > 0 and self.craft_count % organize_interval == 0:
                     if organize_button_path:
                         self._log("整理背包...")
-                        self._click_template(organize_button_path, window_rect, pre_delay=0.5, double_click=True)
+                        self._click_template(organize_button_path, window_rect, pre_delay=0.5, long_press=True)
                         time.sleep(1.0)
 
                 # 短暂间隔再开始下一轮
@@ -232,7 +232,7 @@ class CraftEngine:
             self.is_running = False
             self._log("制造已停止")
 
-    def _click_template(self, template_path, window_rect, pre_delay=0.2, double_click=False):
+    def _click_template(self, template_path, window_rect, pre_delay=0.2, long_press=False):
         """在窗口中查找模板并点击
 
         Args:
@@ -264,9 +264,11 @@ class CraftEngine:
             self._log(f"[点击] {name} 置信度:{max_val:.2f} 坐标:({click_x},{click_y})")
             pyautogui.moveTo(click_x, click_y)
             time.sleep(pre_delay)
-            pyautogui.click()
-            if double_click:
-                time.sleep(0.1)
+            if long_press:
+                pyautogui.mouseDown()
+                time.sleep(0.5)
+                pyautogui.mouseUp()
+            else:
                 pyautogui.click()
             return True
         self._log(f"[点击] {name} 未找到，最高置信度:{max_val:.2f}")
