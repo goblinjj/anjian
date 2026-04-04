@@ -256,11 +256,12 @@ class BackpackReader:
         grid = GridInfo(screen_origin_x, screen_origin_y, cell_w, cell_h)
         return (grid, f"网格定位成功({len(cells)}个空格子): {grid}")
 
-    def scan_backpack(self, grid_info):
+    def scan_backpack(self, grid_info, debug=False):
         """扫描背包20个格子
 
         Args:
             grid_info: GridInfo 网格定位信息
+            debug: bool 是否保存调试图片到 debug/ 目录
 
         Returns:
             list[BackpackSlot]: 20个格子的信息
@@ -279,6 +280,12 @@ class BackpackReader:
             return []
 
         grid_bgr = cv2.cvtColor(grid_image, cv2.COLOR_RGB2BGR)
+
+        # debug: 保存整个网格截图
+        if debug:
+            debug_dir = 'debug'
+            os.makedirs(debug_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(debug_dir, 'grid_full.png'), grid_bgr)
 
         # 加载空格子模板
         empty_tmpl = None
@@ -326,6 +333,7 @@ class BackpackReader:
 
                 # 数字识别
                 quantity = None
+                digit_img = None
                 if has_digits and not is_empty:
                     if (digit_ry >= 0 and digit_rx >= 0
                             and digit_ry + digit_rh <= cell_h
@@ -335,6 +343,24 @@ class BackpackReader:
                             digit_rx : digit_rx + digit_rw
                         ].copy()
                         quantity = self.digit_recognizer.recognize(digit_img)
+
+                # debug: 保存每个格子和数字区域
+                if debug:
+                    cell_name = f'cell_{row}_{col}'
+                    cv2.imwrite(
+                        os.path.join(debug_dir, f'{cell_name}.png'), cell_img)
+                    if digit_img is not None:
+                        cv2.imwrite(
+                            os.path.join(debug_dir, f'{cell_name}_digit.png'),
+                            digit_img)
+                        # 也保存二值化版本
+                        gray = cv2.cvtColor(digit_img, cv2.COLOR_BGR2GRAY)
+                        _, binary = cv2.threshold(
+                            gray, 0, 255,
+                            cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                        cv2.imwrite(
+                            os.path.join(debug_dir, f'{cell_name}_binary.png'),
+                            binary)
 
                 slots.append(BackpackSlot(
                     col, row, center_x, center_y,

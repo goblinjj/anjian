@@ -119,8 +119,12 @@ class CraftEngine:
                               f"请在「设置」中截取0-9数字模板")
                     break
 
-                # 5. 扫描20个格子
-                slots = self.backpack_reader.scan_backpack(grid_info)
+                # 5. 扫描20个格子（第一次启用debug保存图片）
+                is_first_scan = (self.craft_count == 0)
+                slots = self.backpack_reader.scan_backpack(
+                    grid_info, debug=is_first_scan)
+                if is_first_scan:
+                    self._log("调试图片已保存到 debug/ 目录")
 
                 empty_count = sum(1 for s in slots if s.is_empty)
                 items_with_qty = sum(1 for s in slots if s.quantity is not None)
