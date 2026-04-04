@@ -160,9 +160,11 @@ class SettingsDialog:
         filename = key.replace('_image', '') + '.png'
         save_path = os.path.join(TEMPLATES_DIR, filename)
 
+        self.dialog.grab_release()
         self.dialog.withdraw()
         success = self.screenshot_callback(save_path)
         self.dialog.deiconify()
+        self.dialog.grab_set()
 
         if success and os.path.exists(save_path):
             self.settings[key] = save_path
@@ -172,6 +174,7 @@ class SettingsDialog:
         """逐个截取0-9数字模板"""
         os.makedirs(DIGITS_DIR, exist_ok=True)
 
+        self.dialog.grab_release()
         self.dialog.withdraw()
         for digit in range(10):
             save_path = os.path.join(DIGITS_DIR, f'{digit}.png')
@@ -179,8 +182,10 @@ class SettingsDialog:
             success = self.screenshot_callback(save_path)
             if not success:
                 self.dialog.deiconify()
+                self.dialog.grab_set()
                 return
         self.dialog.deiconify()
+        self.dialog.grab_set()
 
         digits_exist = all(
             os.path.exists(os.path.join(DIGITS_DIR, f'{d}.png')) for d in range(10)

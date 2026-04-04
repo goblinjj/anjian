@@ -160,9 +160,11 @@ class RecipeDialog:
         os.makedirs(recipe_dir, exist_ok=True)
         save_path = os.path.join(recipe_dir, f'material_{index + 1}.png')
 
+        self.dialog.grab_release()
         self.dialog.withdraw()
         success = self.screenshot_callback(save_path)
         self.dialog.deiconify()
+        self.dialog.grab_set()
 
         if success and os.path.exists(save_path):
             self.materials[index]['image_path'] = save_path

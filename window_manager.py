@@ -19,6 +19,59 @@ IDC_CROSS = 32515
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
+# 设置Windows API函数的参数类型和返回类型（64位兼容）
+user32.SetWindowsHookExW.argtypes = [
+    ctypes.c_int, ctypes.c_void_p, ctypes.wintypes.HINSTANCE, ctypes.wintypes.DWORD
+]
+user32.SetWindowsHookExW.restype = ctypes.c_void_p
+
+user32.CallNextHookEx.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM
+]
+user32.CallNextHookEx.restype = ctypes.c_long
+
+user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+user32.UnhookWindowsHookEx.restype = ctypes.wintypes.BOOL
+
+kernel32.GetModuleHandleW.argtypes = [ctypes.wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = ctypes.wintypes.HMODULE
+
+user32.GetCursorPos.argtypes = [ctypes.POINTER(ctypes.wintypes.POINT)]
+user32.GetCursorPos.restype = ctypes.wintypes.BOOL
+
+user32.WindowFromPoint.argtypes = [ctypes.wintypes.POINT]
+user32.WindowFromPoint.restype = ctypes.wintypes.HWND
+
+user32.GetAncestor.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.UINT]
+user32.GetAncestor.restype = ctypes.wintypes.HWND
+
+user32.PostQuitMessage.argtypes = [ctypes.c_int]
+user32.PostQuitMessage.restype = None
+
+user32.GetMessageW.argtypes = [
+    ctypes.POINTER(ctypes.wintypes.MSG), ctypes.wintypes.HWND,
+    ctypes.wintypes.UINT, ctypes.wintypes.UINT
+]
+user32.GetMessageW.restype = ctypes.wintypes.BOOL
+
+user32.TranslateMessage.argtypes = [ctypes.POINTER(ctypes.wintypes.MSG)]
+user32.TranslateMessage.restype = ctypes.wintypes.BOOL
+
+user32.DispatchMessageW.argtypes = [ctypes.POINTER(ctypes.wintypes.MSG)]
+user32.DispatchMessageW.restype = ctypes.c_long
+
+user32.IsWindow.argtypes = [ctypes.wintypes.HWND]
+user32.IsWindow.restype = ctypes.wintypes.BOOL
+
+user32.GetWindowRect.argtypes = [ctypes.wintypes.HWND, ctypes.POINTER(ctypes.wintypes.RECT)]
+user32.GetWindowRect.restype = ctypes.wintypes.BOOL
+
+user32.GetWindowTextLengthW.argtypes = [ctypes.wintypes.HWND]
+user32.GetWindowTextLengthW.restype = ctypes.c_int
+
+user32.GetWindowTextW.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.LPWSTR, ctypes.c_int]
+user32.GetWindowTextW.restype = ctypes.c_int
+
 
 class WindowManager:
     """窗口管理器"""
