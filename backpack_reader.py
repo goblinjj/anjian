@@ -93,27 +93,31 @@ class BackpackReader:
     def detect_grid(self, window_region, confidence=0.8):
         """使用空格子模板自动检测网格布局
 
-        通过匹配空格子模板找到所有空格位置，从而推导出网格的起点和格子大小。
+        模板的宽高即为格子尺寸，通过匹配找到空格子位置确定网格起点。
 
         Args:
             window_region: (left, top, width, height) 游戏窗口区域
             confidence: 匹配置信度
 
         Returns:
-            dict: {'origin': (x,y), 'cell_width': w, 'cell_height': h, 'info': str}
+            dict: {'origin': (x,y), 'cell_width': w, 'cell_height': h, ...}
             或 None
         """
         empty_cell_path = self.settings.get('empty_cell_image')
         if not empty_cell_path or not os.path.exists(empty_cell_path):
             return None
 
+        tmpl = self._load_template(empty_cell_path)
+        cell_h, cell_w = tmpl.shape[:2]
+
+        # 模板太小说明截取有误
+        if cell_w < 15 or cell_h < 15:
+            return None
+
         screenshot = take_screenshot(region=window_region)
         screen_np = np.array(screenshot)
         screenshot.close()
         screen_bgr = cv2.cvtColor(screen_np, cv2.COLOR_RGB2BGR)
-
-        tmpl = self._load_template(empty_cell_path)
-        cell_h, cell_w = tmpl.shape[:2]
 
         if cell_h > screen_bgr.shape[0] or cell_w > screen_bgr.shape[1]:
             return None
@@ -124,7 +128,7 @@ class BackpackReader:
         if len(locations[0]) == 0:
             return None
 
-        # 去重：合并相邻匹配点
+        # 去重：合并相邻匹配点（距离小于格子尺寸一半的视为同一格子）
         points = sorted(zip(locations[1].tolist(), locations[0].tolist()))
         cells = []
         for x, y in points:
@@ -139,66 +143,19 @@ class BackpackReader:
         if not cells:
             return None
 
-        # 网格起点：找到最左上角的格子位置
-        # 空格子不一定在第一行第一列，需要推算
+        # 最左上角的空格子位置即为网格起点（不做反推，避免负坐标）
         min_x = min(c[0] for c in cells)
         min_y = min(c[1] for c in cells)
-
-        # 如果有多个空格子，检查间距是否与格子大小一致
-        x_coords = sorted(set(c[0] for c in cells))
-        y_coords = sorted(set(c[1] for c in cells))
-
-        # 验证间距（应该是格子大小的整数倍）
-        if len(x_coords) >= 2:
-            x_gaps = [x_coords[i+1] - x_coords[i] for i in range(len(x_coords)-1)]
-            min_gap = min(x_gaps)
-            # 如果最小间距和模板宽度差距太大，格子尺寸可能不对
-            if abs(min_gap - cell_w) > 5:
-                cell_w = min_gap
-
-        if len(y_coords) >= 2:
-            y_gaps = [y_coords[i+1] - y_coords[i] for i in range(len(y_coords)-1)]
-            min_gap = min(y_gaps)
-            if abs(min_gap - cell_h) > 5:
-                cell_h = min_gap
-
-        # 从空格子位置反推网格原点（第0行第0列的位置）
-        # 空格子在 (min_x, min_y)，其网格坐标可能是任意位置
-        # 原点 = min_x - col * cell_w, min_y - row * cell_h
-        # 我们取 min_x % cell_w 的余数来找到真正的起点列偏移
-        # 但更简单的做法：原点就是最左上角空格子沿网格方向回推到边界
-        origin_x = min_x
-        origin_y = min_y
-
-        # 尝试向左/上推算是否还有更靠前的列/行
-        # 通过检查间距模式推断当前空格子的列号/行号
-        if len(x_coords) >= 2:
-            gap = cell_w
-            # 从最小x向左推，看能推几个格子（不超过GRID_COLS-1个）
-            cols_before = round(min_x / gap) if gap > 0 else 0
-            # 但不能超过合理范围，用屏幕截图边界限制
-            while cols_before > 0 and (min_x - cols_before * gap) < 0:
-                cols_before -= 1
-            if cols_before > 0:
-                origin_x = min_x - cols_before * gap
-
-        if len(y_coords) >= 2:
-            gap = cell_h
-            rows_before = round(min_y / gap) if gap > 0 else 0
-            while rows_before > 0 and (min_y - rows_before * gap) < 0:
-                rows_before -= 1
-            if rows_before > 0:
-                origin_y = min_y - rows_before * gap
 
         win_left, win_top = window_region[0], window_region[1]
 
         return {
-            'origin': (win_left + origin_x, win_top + origin_y),
+            'origin': (win_left + min_x, win_top + min_y),
             'cell_width': cell_w,
             'cell_height': cell_h,
             'empty_count': len(cells),
             'info': f"网格检测: 格子{cell_w}x{cell_h}, {len(cells)}个空格子, "
-                    f"起点({win_left + origin_x},{win_top + origin_y})"
+                    f"起点({win_left + min_x},{win_top + min_y})"
         }
 
     def scan_backpack(self, window_region, backpack_origin,

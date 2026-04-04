@@ -92,36 +92,34 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
-                # 3. 尝试空格子自动检测网格
-                grid_info = self.backpack_reader.detect_grid(window_rect)
+                # 3. 用标题模板定位背包起点（最多重试3次）
+                self._log("扫描背包...")
                 backpack_origin = None
-                cell_w = None
-                cell_h = None
-
-                if grid_info:
-                    backpack_origin = grid_info['origin']
-                    cell_w = grid_info['cell_width']
-                    cell_h = grid_info['cell_height']
-                    self._log(grid_info['info'])
-                else:
-                    # 回退到标题模板定位
-                    self._log("扫描背包...")
-                    for attempt in range(3):
-                        if self._check_stop():
-                            break
-                        bx, by, info = self.backpack_reader.locate_backpack(window_rect)
-                        if bx is not None:
-                            backpack_origin = (bx, by)
-                            self._log(info)
-                            break
-                        if attempt < 2:
-                            self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
-                            time.sleep(1)
-                        else:
-                            self._log(f"定位背包失败: {info}")
+                for attempt in range(3):
+                    if self._check_stop():
+                        break
+                    bx, by, info = self.backpack_reader.locate_backpack(window_rect)
+                    if bx is not None:
+                        backpack_origin = (bx, by)
+                        self._log(info)
+                        break
+                    if attempt < 2:
+                        self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
+                        time.sleep(1)
+                    else:
+                        self._log(f"定位背包失败: {info}")
 
                 if not backpack_origin:
                     break
+
+                # 4. 用空格子模板检测格子大小（可选）
+                cell_w = None
+                cell_h = None
+                grid_info = self.backpack_reader.detect_grid(window_rect)
+                if grid_info:
+                    cell_w = grid_info['cell_width']
+                    cell_h = grid_info['cell_height']
+                    self._log(f"格子大小自动检测: {cell_w}x{cell_h}")
 
                 # 4. 检查数字模板
                 if not self.backpack_reader.digit_recognizer.is_loaded():
