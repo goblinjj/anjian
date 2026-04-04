@@ -92,50 +92,40 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
-                # 3. 用标题模板定位背包起点（最多重试3次）
-                self._log("扫描背包...")
-                backpack_origin = None
+                # 3. 定位背包网格（最多重试3次）
+                self._log("定位背包网格...")
+                grid_info = None
                 for attempt in range(3):
                     if self._check_stop():
                         break
-                    bx, by, info = self.backpack_reader.locate_backpack(window_rect)
-                    if bx is not None:
-                        backpack_origin = (bx, by)
+                    grid, info = self.backpack_reader.locate_grid(window_rect)
+                    if grid is not None:
+                        grid_info = grid
                         self._log(info)
                         break
                     if attempt < 2:
                         self._log(f"第{attempt+1}次定位失败: {info}，1秒后重试...")
                         time.sleep(1)
                     else:
-                        self._log(f"定位背包失败: {info}")
+                        self._log(f"定位失败: {info}")
 
-                if not backpack_origin:
+                if not grid_info:
                     break
-
-                # 4. 用空格子模板获取格子大小（可选）
-                cell_w = None
-                cell_h = None
-                cell_size = self.backpack_reader.get_cell_size()
-                if cell_size:
-                    cell_w, cell_h = cell_size
-                    self._log(f"格子大小: {cell_w}x{cell_h} (来自空格子模板)")
 
                 # 4. 检查数字模板
                 if not self.backpack_reader.digit_recognizer.is_loaded():
                     loaded = len(self.backpack_reader.digit_recognizer.templates)
-                    self._log(f"错误: 数字模板未完整加载 (已加载{loaded}/10)，请在「设置」中截取0-9数字模板")
+                    self._log(f"错误: 数字模板未完整加载 (已加载{loaded}/10)，"
+                              f"请在「设置」中截取0-9数字模板")
                     break
 
-                # 5. 扫描背包格子
-                log_cw = cell_w or self.backpack_reader.settings.get('cell_width', 40)
-                log_ch = cell_h or self.backpack_reader.settings.get('cell_height', 40)
-                self._log(f"网格参数: 格子{log_cw}x{log_ch}, 起点{backpack_origin}")
-                slots = self.backpack_reader.scan_backpack(
-                    window_rect, backpack_origin, cell_w, cell_h)
+                # 5. 扫描20个格子
+                slots = self.backpack_reader.scan_backpack(grid_info)
 
                 empty_count = sum(1 for s in slots if s.is_empty)
                 items_with_qty = sum(1 for s in slots if s.quantity is not None)
-                items_no_qty = sum(1 for s in slots if not s.is_empty and s.quantity is None)
+                items_no_qty = sum(
+                    1 for s in slots if not s.is_empty and s.quantity is None)
                 self._log(f"扫描完成: {items_with_qty}个有数量, "
                           f"{items_no_qty}个数量未识别, {empty_count}个空格子")
 
@@ -171,17 +161,11 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 7. 点击匹配到的格子
-                click_cw = cell_w or self.backpack_reader.settings.get('cell_width', 40)
-                click_ch = cell_h or self.backpack_reader.settings.get('cell_height', 40)
-
+                # 7. 点击匹配到的格子（使用格子的屏幕坐标）
                 for slot in matched_slots:
                     if self._check_stop():
                         break
-                    screen_x, screen_y = self.window_manager.grid_to_screen(
-                        slot.grid_x, slot.grid_y, backpack_origin, click_cw, click_ch
-                    )
-                    pyautogui.click(screen_x, screen_y)
+                    pyautogui.click(slot.screen_x, slot.screen_y)
                     time.sleep(0.3)
 
                 if self._check_stop():
