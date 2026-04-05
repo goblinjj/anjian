@@ -325,7 +325,10 @@ class BackpackReader:
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             if max_val >= confidence:
-                if slot.quantity is None:
+                if required_quantity == 0:
+                    # 数量为0：只匹配图标，不检查数量
+                    candidates.append((slot, max_val))
+                elif slot.quantity is None:
                     icon_matched_but_insufficient.append(
                         (slot, max_val, "数量未识别"))
                 elif slot.quantity < required_quantity:

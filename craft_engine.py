@@ -151,7 +151,8 @@ class CraftEngine:
                     )
 
                     if slot is None:
-                        self._log(f"材料{i+1}(需{required_qty}个): {info}")
+                        qty_desc = "仅匹配" if required_qty == 0 else f"需{required_qty}个"
+                        self._log(f"材料{i+1}({qty_desc}): {info}")
                         all_matched = False
                         break
 

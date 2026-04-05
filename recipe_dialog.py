@@ -121,7 +121,7 @@ class RecipeDialog:
         # 数量
         qty_var = tk.IntVar(value=quantity)
         ttk.Label(row, text="×").pack(side=tk.LEFT)
-        qty_spin = ttk.Spinbox(row, from_=1, to=80, textvariable=qty_var, width=5)
+        qty_spin = ttk.Spinbox(row, from_=0, to=80, textvariable=qty_var, width=5)
         qty_spin.pack(side=tk.LEFT, padx=5)
 
         # 截图按钮
