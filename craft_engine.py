@@ -72,6 +72,7 @@ class CraftEngine:
         """制造主循环"""
         try:
             materials = recipe['materials']
+            craft_time = recipe.get('craft_time', 10.0)
             wait_time = recipe.get('wait_time', 3.0)
             organize_interval = recipe.get('organize_interval', 0)
 
@@ -193,10 +194,10 @@ class CraftEngine:
                 time.sleep(0.2)
 
                 # 9. 等待制造完成
-                self._log(f"等待制造完成...")
+                self._log(f"等待制造完成(最长{craft_time}秒)...")
                 if completion_image_path:
                     completed = self._wait_for_template(
-                        completion_image_path, window_rect, timeout=wait_time + 30
+                        completion_image_path, window_rect, timeout=craft_time + 10
                     )
                     if completed and not self._check_stop():
                         # 10. 点击完成按钮
@@ -208,7 +209,7 @@ class CraftEngine:
                     else:
                         self.fail_count += 1
                 else:
-                    time.sleep(wait_time)
+                    time.sleep(craft_time)
                     self.success_count += 1
 
                 self.craft_count += 1

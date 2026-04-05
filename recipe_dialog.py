@@ -60,6 +60,15 @@ class RecipeDialog:
         self.name_var = tk.StringVar()
         ttk.Entry(name_row, textvariable=self.name_var, width=30).pack(side=tk.LEFT, padx=10)
 
+        # 制造时间
+        craft_row = ttk.Frame(main_frame)
+        craft_row.pack(fill=tk.X, pady=5)
+        ttk.Label(craft_row, text="制造时间:").pack(side=tk.LEFT)
+        self.craft_time_var = tk.DoubleVar(value=10.0)
+        ttk.Spinbox(craft_row, from_=1.0, to=300.0, increment=1.0,
+                    textvariable=self.craft_time_var, width=8).pack(side=tk.LEFT, padx=10)
+        ttk.Label(craft_row, text="秒 (等待制造完成的最长时间)").pack(side=tk.LEFT)
+
         # 等待时间
         wait_row = ttk.Frame(main_frame)
         wait_row.pack(fill=tk.X, pady=5)
@@ -67,7 +76,7 @@ class RecipeDialog:
         self.wait_var = tk.DoubleVar(value=3.0)
         ttk.Spinbox(wait_row, from_=0.5, to=60.0, increment=0.5,
                     textvariable=self.wait_var, width=8).pack(side=tk.LEFT, padx=10)
-        ttk.Label(wait_row, text="秒 (制造后等待)").pack(side=tk.LEFT)
+        ttk.Label(wait_row, text="秒 (制造完成后等待)").pack(side=tk.LEFT)
 
         # 整理频率
         org_row = ttk.Frame(main_frame)
@@ -180,6 +189,7 @@ class RecipeDialog:
     def _load_recipe(self, recipe):
         """加载已有配方到界面"""
         self.name_var.set(recipe['name'])
+        self.craft_time_var.set(recipe.get('craft_time', 10.0))
         self.wait_var.set(recipe.get('wait_time', 3.0))
         self.org_var.set(recipe.get('organize_interval', 5))
 
@@ -228,6 +238,7 @@ class RecipeDialog:
 
         recipe_data = {
             'name': name,
+            'craft_time': self.craft_time_var.get(),
             'wait_time': self.wait_var.get(),
             'organize_interval': self.org_var.get(),
             'materials': valid_materials,
