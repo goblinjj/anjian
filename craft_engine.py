@@ -194,10 +194,16 @@ class CraftEngine:
                 time.sleep(0.2)
 
                 # 9. 等待制造完成
-                self._log(f"等待制造完成(最长{craft_time}秒)...")
-                if completion_image_path:
+                self._log(f"等待制造{craft_time}秒...")
+                # 先等待制造时间
+                wait_end = time.time() + craft_time
+                while time.time() < wait_end and not self._check_stop():
+                    time.sleep(0.5)
+                if completion_image_path and not self._check_stop():
+                    # 再检测完成按钮（最多10秒）
+                    self._log("检测制造完成按钮...")
                     completed = self._wait_for_template(
-                        completion_image_path, window_rect, timeout=craft_time + 10
+                        completion_image_path, window_rect, timeout=10
                     )
                     if completed and not self._check_stop():
                         # 10. 点击完成按钮
@@ -209,7 +215,7 @@ class CraftEngine:
                     else:
                         self.fail_count += 1
                 else:
-                    time.sleep(craft_time)
+                    # 无完成按钮图片，等待已在上方完成，直接算成功
                     self.success_count += 1
 
                 self.craft_count += 1
