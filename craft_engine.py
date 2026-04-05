@@ -227,9 +227,14 @@ class CraftEngine:
                 # 10. 整理背包
                 if organize_interval > 0 and self.craft_count % organize_interval == 0:
                     if organize_button_path:
-                        self._log("整理背包...")
+                        self._log("整理背包: 打开背包...")
+                        pyautogui.hotkey('ctrl', 'e')
+                        time.sleep(0.5)
                         self._click_template(organize_button_path, window_rect, pre_delay=0.5, long_press=True)
                         time.sleep(1.0)
+                        self._log("整理背包: 关闭背包...")
+                        pyautogui.hotkey('ctrl', 'e')
+                        time.sleep(0.5)
 
                 # 短暂间隔再开始下一轮
                 time.sleep(0.5)
