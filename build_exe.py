@@ -153,12 +153,16 @@ def build_exe():
             version_param = ["--version-file", version_file]
             safe_print("Found version info file, will include version information")
         
+        # 在CI环境中用ASCII名避免编码问题，之后再重命名
+        ci_env = os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS')
+        exe_name = "MoliCraftAssistant" if ci_env else "魔力宝贝制造助手"
+
         # 优化的打包参数，减少误报
         simple_cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
             "--windowed",
-            "--name=魔力宝贝制造助手",
+            f"--name={exe_name}",
             "--icon=logo.ico",
             # 添加版本信息
             *version_param,
@@ -203,6 +207,15 @@ def build_exe():
         
         if result.returncode == 0:
             safe_print("Build successful!")
+
+            # CI环境中重命名为中文名
+            if ci_env:
+                src = os.path.join("dist", f"{exe_name}.exe")
+                dst = os.path.join("dist", "魔力宝贝制造助手.exe")
+                if os.path.exists(src):
+                    os.rename(src, dst)
+                    safe_print(f"Renamed {src} -> {dst}")
+
             safe_print("exe file location: dist/魔力宝贝制造助手.exe")
             
             # 复制图片文件和配置文件到dist目录
