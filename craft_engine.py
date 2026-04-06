@@ -206,10 +206,21 @@ class CraftEngine:
                         completion_image_path, window_rect, timeout=10
                     )
                     if completed and not self._check_stop():
-                        # 10. 点击完成按钮
-                        self._log("制造完成，点击确认...")
-                        self._click_template(completion_image_path, window_rect)
-                        pyautogui.moveTo(100, 100)
+                        # 10. 点击完成按钮（循环确认直到按钮消失）
+                        for click_attempt in range(5):
+                            if self._check_stop():
+                                break
+                            self._log(f"点击制造完成按钮(第{click_attempt+1}次)...")
+                            self._click_template(completion_image_path, window_rect)
+                            pyautogui.moveTo(100, 100)
+                            time.sleep(0.5)
+                            # 确认按钮是否已消失
+                            still_found = self._find_template(
+                                completion_image_path, window_rect)
+                            if not still_found:
+                                self._log("确认: 完成按钮已消失")
+                                break
+                            self._log("完成按钮仍存在，重新点击...")
                         self.success_count += 1
                         time.sleep(1.0)  # 等待画面恢复到背包界面
                     else:
@@ -234,7 +245,10 @@ class CraftEngine:
                         time.sleep(1.0)
                         self._log("整理背包: 关闭背包...")
                         pyautogui.hotkey('ctrl', 'e')
-                        time.sleep(0.5)
+                        time.sleep(1.0)
+                        # 整理后物品位置会变，跳回循环顶部重新扫描
+                        self._log("整理完成，重新扫描背包...")
+                        continue
 
                 # 短暂间隔再开始下一轮
                 time.sleep(0.5)
@@ -286,6 +300,23 @@ class CraftEngine:
             return True
         self._log(f"[点击] {name} 未找到，最高置信度:{max_val:.2f}")
         return False
+
+    def _find_template(self, template_path, window_rect, threshold=0.7):
+        """检查模板是否存在于窗口中（不点击）"""
+        screenshot = take_screenshot(region=window_rect)
+        screen_np = np.array(screenshot)
+        screenshot.close()
+        screen_bgr = cv2.cvtColor(screen_np, cv2.COLOR_RGB2BGR)
+
+        pil_tmpl = Image.open(template_path)
+        tmpl = np.array(pil_tmpl)
+        pil_tmpl.close()
+        if len(tmpl.shape) == 3:
+            tmpl = cv2.cvtColor(tmpl, cv2.COLOR_RGB2BGR)
+
+        result = cv2.matchTemplate(screen_bgr, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, _ = cv2.minMaxLoc(result)
+        return max_val >= threshold
 
     def _wait_for_template(self, template_path, window_rect, timeout=30):
         """等待模板出现
