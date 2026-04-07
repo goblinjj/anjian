@@ -94,7 +94,7 @@ class AutoEncounterDialog:
         # 按钮
         btn_frame = ttk.Frame(main)
         btn_frame.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(btn_frame, text="开始执行",
+        ttk.Button(btn_frame, text="确定",
                    command=self._start).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="取消",
                    command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
@@ -219,7 +219,7 @@ class LoopHealingDialog:
         # 底部按钮
         bottom = ttk.Frame(main)
         bottom.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(bottom, text="开始执行",
+        ttk.Button(bottom, text="确定",
                    command=self._start).pack(side=tk.RIGHT, padx=5)
         ttk.Button(bottom, text="取消",
                    command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)

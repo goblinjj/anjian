@@ -82,7 +82,7 @@ class HotkeyManager:
         """快捷键启动执行"""
         if self.gui.is_running or self.gui._tool_stop_callback:
             return
-        self.gui.root.after(0, self.gui.start_craft)
+        self.gui.root.after(0, self.gui.start_selected)
 
     def _on_stop_hotkey(self):
         """快捷键停止执行（制造或工具脚本）"""
