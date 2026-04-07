@@ -80,13 +80,15 @@ class HotkeyManager:
 
     def _on_start_hotkey(self):
         """快捷键启动执行"""
-        if self.gui.is_running:
+        if self.gui.is_running or self.gui._tool_stop_callback:
             return
         self.gui.root.after(0, self.gui.start_craft)
 
     def _on_stop_hotkey(self):
-        """快捷键停止执行"""
-        if self.gui.is_running:
+        """快捷键停止执行（制造或工具脚本）"""
+        if self.gui._tool_stop_callback:
+            self.gui.root.after(0, self.gui._tool_stop_callback)
+        elif self.gui.is_running:
             self.gui.root.after(0, self.gui.stop_craft)
 
     def update_hotkeys(self, start_key, stop_key):
