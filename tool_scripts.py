@@ -197,8 +197,8 @@ class LoopHealingEngine:
                         # 查找治疗技能图片
                         skill_pos = self._find_template(skill_image, rect)
                         if not skill_pos:
-                            self._log(f"  步骤{i+1}: 未找到治疗技能，等待...")
-                            # 持续等待直到找到或停止
+                            self._log(f"  步骤{i+1}: 未找到治疗技能，移开鼠标重试...")
+                            pyautogui.moveTo(50, 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -208,6 +208,7 @@ class LoopHealingEngine:
                                     skill_image, rect)
                                 if skill_pos:
                                     break
+                                pyautogui.moveTo(50, 50)
                             if not skill_pos or self.should_stop:
                                 break
                         sx, sy, _ = skill_pos
@@ -222,7 +223,8 @@ class LoopHealingEngine:
                         # 查找队员定位图片获取基准坐标
                         member_pos = self._find_template(member_image, rect)
                         if not member_pos:
-                            self._log(f"  步骤{i+1}: 未找到队员定位，等待...")
+                            self._log(f"  步骤{i+1}: 未找到队员定位，移开鼠标重试...")
+                            pyautogui.moveTo(50, 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -232,6 +234,7 @@ class LoopHealingEngine:
                                     member_image, rect)
                                 if member_pos:
                                     break
+                                pyautogui.moveTo(50, 50)
                             if not member_pos or self.should_stop:
                                 break
                         mx, my, _ = member_pos
