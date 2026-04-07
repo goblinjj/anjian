@@ -352,14 +352,18 @@ class CraftAssistantGUI:
             cfg = config.get('loop_healing', {})
             skill = cfg.get('skill_image', '')
             member = cfg.get('member_image', '')
-            offsets = cfg.get('offsets', [])
+            steps = cfg.get('steps', [])
             skill_ok = bool(skill) and os.path.exists(skill)
             member_ok = bool(member) and os.path.exists(member)
             lines.append(f"\n治疗技能: {'已设置' if skill_ok else '未设置'}")
             lines.append(f"队员定位: {'已设置' if member_ok else '未设置'}")
-            lines.append(f"偏移点击: {len(offsets)} 个")
-            if not (skill_ok and member_ok and offsets):
-                lines.append("\n(需先点击「配置」截取图片并添加偏移)")
+            # 显示步骤摘要
+            skill_count = sum(1 for s in steps if s['type'] == 'skill')
+            member_count = sum(1 for s in steps if s['type'] == 'member')
+            lines.append(f"执行步骤: {len(steps)} 个 "
+                         f"(技能x{skill_count}, 队员x{member_count})")
+            if not (skill_ok and member_ok and steps):
+                lines.append("\n(需先点击「配置」截取图片并添加步骤)")
 
         self.info_label.config(text='\n'.join(lines), foreground='black')
 
@@ -522,23 +526,22 @@ class CraftAssistantGUI:
         config = load_tool_config().get('loop_healing', {})
         skill = config.get('skill_image', '')
         member = config.get('member_image', '')
-        offsets = config.get('offsets', [])
+        steps = config.get('steps', [])
 
         # 检查配置是否完整
         if (not skill or not os.path.exists(skill)
                 or not member or not os.path.exists(member)
-                or not offsets):
-            # 配置不完整，打开配置对话框
+                or not steps):
             dialog = LoopHealingDialog(self.root, self._screenshot_region)
             if not dialog.result:
                 return
             skill = dialog.result['skill_image']
             member = dialog.result['member_image']
-            offsets = dialog.result['offsets']
+            steps = dialog.result['steps']
             self._show_tool_info('loop_healing')
 
         engine = LoopHealingEngine(self.window_manager, self._log_message)
-        engine.start(skill, member, offsets)
+        engine.start(skill, member, steps)
         self._active_tool_engine = engine
         self._tool_stop_callback = self._stop_tool
         self.start_btn.config(state=tk.DISABLED)

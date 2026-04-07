@@ -103,7 +103,10 @@ class AutoEncounterEngine:
 class LoopHealingEngine:
     """循环医疗引擎
 
-    循环执行: 查找并点击治疗技能 → 查找队员定位图片 → 依次点击各偏移位置。
+    按自定义步骤序列循环执行，步骤可自由组合:
+    - skill: 查找并点击治疗技能
+    - member: 在队员基准位置 + 偏移处点击
+    每次点击前统一 200ms 延迟。
     """
 
     def __init__(self, window_manager, status_callback=None):
@@ -113,12 +116,13 @@ class LoopHealingEngine:
         self.is_running = False
         self._thread = None
 
-    def start(self, skill_image, member_image, offsets):
+    def start(self, skill_image, member_image, steps):
         """
         Args:
             skill_image: 治疗技能图片路径
             member_image: 队员定位图片路径
-            offsets: list of dict, 每项包含 offset_x, offset_y, delay_ms
+            steps: list of dict, 每项为 {'type':'skill'} 或
+                   {'type':'member', 'offset_x':N, 'offset_y':N}
         """
         if self.is_running:
             return
@@ -126,7 +130,7 @@ class LoopHealingEngine:
         self.is_running = True
         self._thread = threading.Thread(
             target=self._run,
-            args=(skill_image, member_image, offsets),
+            args=(skill_image, member_image, steps),
             daemon=True
         )
         self._thread.start()
@@ -165,13 +169,13 @@ class LoopHealingEngine:
             return (click_x, click_y, max_val)
         return None
 
-    def _run(self, skill_image, member_image, offsets):
+    def _run(self, skill_image, member_image, steps):
         try:
             if not self.window_manager.is_window_valid():
                 self._log("错误: 未绑定游戏窗口")
                 return
 
-            self._log("开始循环医疗...")
+            self._log(f"开始循环医疗 (共{len(steps)}个步骤)...")
             count = 0
 
             while not self.should_stop:
@@ -181,25 +185,7 @@ class LoopHealingEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
-                # 1. 查找并点击治疗技能
-                skill_pos = self._find_template(skill_image, rect)
-                if not skill_pos:
-                    self._log("未找到治疗技能，等待重试...")
-                    time.sleep(1)
-                    continue
-
-                sx, sy, conf = skill_pos
-                self._log(f"[第{count}轮] 找到治疗技能 置信度:{conf:.2f}")
-                pyautogui.moveTo(sx, sy)
-                time.sleep(0.1)
-                if self.should_stop:
-                    break
-                pyautogui.click()
-                time.sleep(0.3)
-                if self.should_stop:
-                    break
-
-                # 2. 查找队员定位图片获取基准坐标
+                # 每轮开始时定位队员基准位置
                 member_pos = self._find_template(member_image, rect)
                 if not member_pos:
                     self._log("未找到队员定位图片，等待重试...")
@@ -207,23 +193,40 @@ class LoopHealingEngine:
                     continue
 
                 mx, my, conf = member_pos
-                self._log(f"找到队员基准位置 ({mx},{my}) 置信度:{conf:.2f}")
+                self._log(f"[第{count}轮] 队员基准 ({mx},{my}) 置信度:{conf:.2f}")
 
-                # 3. 依次点击各偏移位置
-                for i, off in enumerate(offsets):
+                # 按步骤序列依次执行
+                for i, step in enumerate(steps):
                     if self.should_stop:
                         break
-                    ox = off.get('offset_x', 0)
-                    oy = off.get('offset_y', 0)
-                    delay = off.get('delay_ms', 500) / 1000.0
 
-                    click_x = mx + ox
-                    click_y = my + oy
-                    pyautogui.moveTo(click_x, click_y)
-                    time.sleep(0.1)
-                    pyautogui.click()
-                    self._log(f"  点击偏移{i+1}: ({ox},{oy}) → 屏幕({click_x},{click_y})")
-                    time.sleep(delay)
+                    if step['type'] == 'skill':
+                        rect = self.window_manager.get_window_rect()
+                        if not rect:
+                            break
+                        skill_pos = self._find_template(skill_image, rect)
+                        if not skill_pos:
+                            self._log(f"  步骤{i+1}: 未找到治疗技能，跳过")
+                            continue
+                        sx, sy, _ = skill_pos
+                        pyautogui.moveTo(sx, sy)
+                        time.sleep(0.2)
+                        if self.should_stop:
+                            break
+                        pyautogui.click()
+                        self._log(f"  步骤{i+1}: 点击治疗技能")
+
+                    elif step['type'] == 'member':
+                        ox = step.get('offset_x', 0)
+                        oy = step.get('offset_y', 0)
+                        click_x = mx + ox
+                        click_y = my + oy
+                        pyautogui.moveTo(click_x, click_y)
+                        time.sleep(0.2)
+                        if self.should_stop:
+                            break
+                        pyautogui.click()
+                        self._log(f"  步骤{i+1}: 队员({ox},{oy})")
 
         except Exception as e:
             self._log(f"循环医疗出错: {str(e)}")

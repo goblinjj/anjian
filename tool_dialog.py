@@ -24,7 +24,7 @@ def load_tool_config():
         'loop_healing': {
             'skill_image': '',
             'member_image': '',
-            'offsets': [],
+            'steps': [],
         }
     }
     if os.path.exists(TOOL_CONFIG_FILE):
@@ -34,6 +34,18 @@ def load_tool_config():
             for key in defaults:
                 if key in saved:
                     defaults[key].update(saved[key])
+            # 向后兼容: 旧版 offsets 格式转换为 steps
+            lh = defaults['loop_healing']
+            if 'offsets' in lh and not lh.get('steps'):
+                steps = [{'type': 'skill'}]
+                for off in lh['offsets']:
+                    steps.append({
+                        'type': 'member',
+                        'offset_x': off.get('offset_x', 0),
+                        'offset_y': off.get('offset_y', 0),
+                    })
+                lh['steps'] = steps
+            lh.pop('offsets', None)
         except Exception:
             pass
     return defaults
@@ -69,16 +81,14 @@ class AutoEncounterDialog:
         main = ttk.Frame(self.dialog, padding=15)
         main.pack(fill=tk.BOTH, expand=True)
 
-        # 说明
         desc = ttk.LabelFrame(main, text="说明", padding=10)
         desc.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(desc, wraplength=370,
                   text="根据绑定窗口的中心位置，在左下和右上两个偏移点之间\n"
                        "循环移动鼠标并点击，用于自动遇敌。\n"
-                       "流程: 左下点击→右上点击→循环"
+                       "流程: 左下点击 → 右上点击 → 循环"
                   ).pack(anchor=tk.W)
 
-        # 参数
         params = ttk.LabelFrame(main, text="参数设置", padding=10)
         params.pack(fill=tk.X, pady=(0, 10))
 
@@ -87,26 +97,23 @@ class AutoEncounterDialog:
         ttk.Label(row, text="偏移距离:", width=10).pack(side=tk.LEFT)
         self.offset_var = tk.IntVar(value=self.config.get('offset', 200))
         ttk.Spinbox(row, from_=50, to=500, increment=10,
-                    textvariable=self.offset_var, width=8).pack(side=tk.LEFT, padx=5)
+                    textvariable=self.offset_var, width=8).pack(
+            side=tk.LEFT, padx=5)
         ttk.Label(row, text="像素 (从中心向左下/右上偏移)",
                   foreground='gray').pack(side=tk.LEFT, padx=5)
 
-        # 按钮
         btn_frame = ttk.Frame(main)
         btn_frame.pack(fill=tk.X, pady=(5, 0))
         ttk.Button(btn_frame, text="确定",
-                   command=self._start).pack(side=tk.RIGHT, padx=5)
+                   command=self._save).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="取消",
                    command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
-    def _start(self):
+    def _save(self):
         offset = self.offset_var.get()
-
-        # 保存配置
         config = load_tool_config()
         config['auto_encounter']['offset'] = offset
         save_tool_config(config)
-
         self.result = {'offset': offset}
         self.dialog.destroy()
 
@@ -114,174 +121,219 @@ class AutoEncounterDialog:
 class LoopHealingDialog:
     """循环医疗配置对话框
 
-    result: {'skill_image': str, 'member_image': str, 'offsets': list} 或 None
+    步骤可自由组合: 治疗技能 / 队员定位(X偏移, Y偏移)
+    result: {'skill_image':str, 'member_image':str, 'steps':list} 或 None
     """
 
     def __init__(self, parent, screenshot_callback):
         self.result = None
         self.screenshot_callback = screenshot_callback
         self.config = load_tool_config()['loop_healing']
+        self.steps = list(self.config.get('steps', []))
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("循环医疗 - 配置")
-        self.dialog.geometry("520x480")
+        self.dialog.geometry("480x560")
         self.dialog.resizable(False, True)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
         self._create_widgets()
-        self._load_offsets()
+        self._refresh_step_list()
         self.dialog.wait_window()
 
     def _create_widgets(self):
         main = ttk.Frame(self.dialog, padding=15)
         main.pack(fill=tk.BOTH, expand=True)
 
-        # 图片模板
+        # ── 图片模板 ──
         img_frame = ttk.LabelFrame(main, text="图片模板", padding=10)
         img_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 治疗技能
         skill_row = ttk.Frame(img_frame)
         skill_row.pack(fill=tk.X, pady=3)
         ttk.Label(skill_row, text="治疗技能:", width=10).pack(side=tk.LEFT)
         skill_path = self.config.get('skill_image', '')
         has_skill = bool(skill_path) and os.path.exists(skill_path)
         self.skill_status = ttk.Label(
-            skill_row, text="已设置 ✓" if has_skill else "未设置 ✗", width=10)
+            skill_row, text="已设置 ✓" if has_skill else "未设置 ✗",
+            width=10)
         self.skill_status.pack(side=tk.LEFT, padx=5)
         ttk.Button(skill_row, text="截图", width=6,
                    command=self._capture_skill).pack(side=tk.LEFT, padx=5)
-        ttk.Label(skill_row, text="治疗技能的图标",
-                  foreground='gray').pack(side=tk.LEFT, padx=5)
 
-        # 队员定位
         member_row = ttk.Frame(img_frame)
         member_row.pack(fill=tk.X, pady=3)
         ttk.Label(member_row, text="队员定位:", width=10).pack(side=tk.LEFT)
         member_path = self.config.get('member_image', '')
         has_member = bool(member_path) and os.path.exists(member_path)
         self.member_status = ttk.Label(
-            member_row, text="已设置 ✓" if has_member else "未设置 ✗", width=10)
+            member_row, text="已设置 ✓" if has_member else "未设置 ✗",
+            width=10)
         self.member_status.pack(side=tk.LEFT, padx=5)
         ttk.Button(member_row, text="截图", width=6,
                    command=self._capture_member).pack(side=tk.LEFT, padx=5)
-        ttk.Label(member_row, text="选择治疗队员界面的定位图片",
-                  foreground='gray').pack(side=tk.LEFT, padx=5)
 
-        # 偏移点击列表
-        offset_frame = ttk.LabelFrame(
-            main, text="偏移点击列表 (相对于队员定位图片的中心位置)", padding=10)
-        offset_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # ── 步骤序列 ──
+        step_frame = ttk.LabelFrame(
+            main, text="执行步骤 (每轮循环按顺序执行，点击前自动200ms延迟)",
+            padding=10)
+        step_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
-        ttk.Label(offset_frame,
-                  text="找到队员后，依次在以下偏移位置点击，每次点击后等待指定延迟",
+        ttk.Label(step_frame,
+                  text="自由组合技能和队员步骤，例如: 技能→队员1→队员2→队员3→技能→队员4",
                   foreground='gray').pack(anchor=tk.W, pady=(0, 5))
 
-        # 表头
-        header = ttk.Frame(offset_frame)
-        header.pack(fill=tk.X)
-        ttk.Label(header, text="  X偏移", width=10).pack(side=tk.LEFT)
-        ttk.Label(header, text="Y偏移", width=10).pack(side=tk.LEFT)
-        ttk.Label(header, text="延迟(ms)", width=10).pack(side=tk.LEFT)
-
-        # 滚动列表
-        list_frame = ttk.Frame(offset_frame)
+        # 步骤列表 (Treeview)
+        list_frame = ttk.Frame(step_frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.offset_canvas = tk.Canvas(list_frame, height=130)
-        self.offset_scrollbar = ttk.Scrollbar(
-            list_frame, orient=tk.VERTICAL, command=self.offset_canvas.yview)
-        self.offset_inner = ttk.Frame(self.offset_canvas)
+        self.step_tree = ttk.Treeview(
+            list_frame, show='tree', height=8, selectmode='browse')
+        step_scroll = ttk.Scrollbar(
+            list_frame, orient=tk.VERTICAL, command=self.step_tree.yview)
+        self.step_tree.configure(yscrollcommand=step_scroll.set)
+        self.step_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        step_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.offset_inner.bind(
-            '<Configure>',
-            lambda e: self.offset_canvas.configure(
-                scrollregion=self.offset_canvas.bbox('all')))
-        self.offset_canvas.create_window(
-            (0, 0), window=self.offset_inner, anchor=tk.NW)
-        self.offset_canvas.configure(
-            yscrollcommand=self.offset_scrollbar.set)
+        # 操作按钮
+        btn_row1 = ttk.Frame(step_frame)
+        btn_row1.pack(fill=tk.X, pady=(5, 0))
+        ttk.Button(btn_row1, text="+ 技能步骤", width=10,
+                   command=self._add_skill_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="+ 队员步骤", width=10,
+                   command=self._add_member_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="删除", width=6,
+                   command=self._delete_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="上移", width=5,
+                   command=self._move_up).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="下移", width=5,
+                   command=self._move_down).pack(side=tk.LEFT, padx=2)
 
-        self.offset_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.offset_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.offset_rows = []
-
-        # 添加/删除按钮
-        btn_row = ttk.Frame(offset_frame)
-        btn_row.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(btn_row, text="添加偏移", width=8,
-                   command=self._add_offset).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_row, text="删除最后一个", width=10,
-                   command=self._remove_offset).pack(side=tk.LEFT, padx=2)
-
-        # 底部按钮
+        # ── 底部按钮 ──
         bottom = ttk.Frame(main)
         bottom.pack(fill=tk.X, pady=(5, 0))
         ttk.Button(bottom, text="确定",
-                   command=self._start).pack(side=tk.RIGHT, padx=5)
+                   command=self._save).pack(side=tk.RIGHT, padx=5)
         ttk.Button(bottom, text="取消",
                    command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
-    def _add_offset(self, x=0, y=0, delay=500):
-        """添加一个偏移行"""
-        row = ttk.Frame(self.offset_inner)
-        row.pack(fill=tk.X, pady=1)
+    # ── 步骤管理 ──
 
-        x_var = tk.IntVar(value=x)
-        y_var = tk.IntVar(value=y)
-        delay_var = tk.IntVar(value=delay)
+    def _refresh_step_list(self):
+        """刷新步骤列表显示"""
+        # 记住当前选中
+        sel = self.step_tree.selection()
+        sel_idx = None
+        if sel:
+            sel_idx = self.step_tree.index(sel[0])
 
+        for child in self.step_tree.get_children():
+            self.step_tree.delete(child)
+
+        for i, step in enumerate(self.steps):
+            if step['type'] == 'skill':
+                text = f"#{i+1}  治疗技能"
+            else:
+                ox = step.get('offset_x', 0)
+                oy = step.get('offset_y', 0)
+                text = f"#{i+1}  队员定位 (X:{ox}, Y:{oy})"
+            self.step_tree.insert('', 'end', text=text)
+
+        # 恢复选中
+        children = self.step_tree.get_children()
+        if sel_idx is not None and children:
+            idx = min(sel_idx, len(children) - 1)
+            self.step_tree.selection_set(children[idx])
+
+    def _get_selected_index(self):
+        """获取当前选中步骤的索引"""
+        sel = self.step_tree.selection()
+        if not sel:
+            return None
+        return self.step_tree.index(sel[0])
+
+    def _add_skill_step(self):
+        """添加治疗技能步骤"""
+        self.steps.append({'type': 'skill'})
+        self._refresh_step_list()
+
+    def _add_member_step(self):
+        """添加队员定位步骤（弹出输入偏移值）"""
+        popup = tk.Toplevel(self.dialog)
+        popup.title("添加队员定位步骤")
+        popup.geometry("300x100")
+        popup.resizable(False, False)
+        popup.transient(self.dialog)
+        popup.grab_set()
+
+        frame = ttk.Frame(popup, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="X偏移:").pack(side=tk.LEFT)
+        x_var = tk.IntVar(value=0)
         ttk.Spinbox(row, from_=-1000, to=1000,
-                    textvariable=x_var, width=8).pack(side=tk.LEFT, padx=2)
+                     textvariable=x_var, width=7).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row, text="Y偏移:").pack(side=tk.LEFT, padx=(10, 0))
+        y_var = tk.IntVar(value=0)
         ttk.Spinbox(row, from_=-1000, to=1000,
-                    textvariable=y_var, width=8).pack(side=tk.LEFT, padx=2)
-        ttk.Spinbox(row, from_=0, to=10000, increment=100,
-                    textvariable=delay_var, width=8).pack(side=tk.LEFT, padx=2)
+                     textvariable=y_var, width=7).pack(side=tk.LEFT, padx=5)
 
-        idx = len(self.offset_rows) + 1
-        ttk.Label(row, text=f"#{idx}", foreground='gray').pack(side=tk.LEFT, padx=5)
+        added = [False]
 
-        self.offset_rows.append((row, x_var, y_var, delay_var))
-        self.offset_inner.update_idletasks()
-        self.offset_canvas.configure(
-            scrollregion=self.offset_canvas.bbox('all'))
+        def on_ok():
+            added[0] = True
+            popup.destroy()
 
-    def _remove_offset(self):
-        """删除最后一个偏移行"""
-        if self.offset_rows:
-            row, _, _, _ = self.offset_rows.pop()
-            row.destroy()
-            self.offset_inner.update_idletasks()
-            self.offset_canvas.configure(
-                scrollregion=self.offset_canvas.bbox('all'))
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(btn_row, text="添加", command=on_ok).pack(
+            side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消", command=popup.destroy).pack(
+            side=tk.RIGHT)
 
-    def _load_offsets(self):
-        """从配置加载偏移列表"""
-        offsets = self.config.get('offsets', [])
-        if not offsets:
-            self._add_offset(0, 0, 500)
-        else:
-            for off in offsets:
-                self._add_offset(
-                    off.get('offset_x', 0),
-                    off.get('offset_y', 0),
-                    off.get('delay_ms', 500))
+        popup.wait_window()
 
-    def _get_offsets(self):
-        """获取当前偏移列表"""
-        result = []
-        for _, x_var, y_var, delay_var in self.offset_rows:
-            result.append({
+        if added[0]:
+            self.steps.append({
+                'type': 'member',
                 'offset_x': x_var.get(),
                 'offset_y': y_var.get(),
-                'delay_ms': delay_var.get(),
             })
-        return result
+            self._refresh_step_list()
+
+    def _delete_step(self):
+        """删除选中步骤"""
+        idx = self._get_selected_index()
+        if idx is not None:
+            self.steps.pop(idx)
+            self._refresh_step_list()
+
+    def _move_up(self):
+        """上移选中步骤"""
+        idx = self._get_selected_index()
+        if idx is not None and idx > 0:
+            self.steps[idx], self.steps[idx - 1] = (
+                self.steps[idx - 1], self.steps[idx])
+            self._refresh_step_list()
+            children = self.step_tree.get_children()
+            self.step_tree.selection_set(children[idx - 1])
+
+    def _move_down(self):
+        """下移选中步骤"""
+        idx = self._get_selected_index()
+        if idx is not None and idx < len(self.steps) - 1:
+            self.steps[idx], self.steps[idx + 1] = (
+                self.steps[idx + 1], self.steps[idx])
+            self._refresh_step_list()
+            children = self.step_tree.get_children()
+            self.step_tree.selection_set(children[idx + 1])
+
+    # ── 截图 ──
 
     def _capture_skill(self):
-        """截取治疗技能图片"""
         os.makedirs(TOOLS_DIR, exist_ok=True)
         save_path = os.path.join(TOOLS_DIR, 'healing_skill.png')
         self.dialog.grab_release()
@@ -294,7 +346,6 @@ class LoopHealingDialog:
             self.skill_status.config(text="已设置 ✓")
 
     def _capture_member(self):
-        """截取队员定位图片"""
         os.makedirs(TOOLS_DIR, exist_ok=True)
         save_path = os.path.join(TOOLS_DIR, 'healing_member.png')
         self.dialog.grab_release()
@@ -306,34 +357,32 @@ class LoopHealingDialog:
             self.config['member_image'] = save_path
             self.member_status.config(text="已设置 ✓")
 
-    def _start(self):
+    # ── 保存 ──
+
+    def _save(self):
         skill_path = self.config.get('skill_image', '')
         member_path = self.config.get('member_image', '')
 
         if not skill_path or not os.path.exists(skill_path):
-            messagebox.showwarning("提示", "请先截取治疗技能图片", parent=self.dialog)
+            messagebox.showwarning(
+                "提示", "请先截取治疗技能图片", parent=self.dialog)
             return
         if not member_path or not os.path.exists(member_path):
-            messagebox.showwarning("提示", "请先截取队员定位图片", parent=self.dialog)
+            messagebox.showwarning(
+                "提示", "请先截取队员定位图片", parent=self.dialog)
+            return
+        if not self.steps:
+            messagebox.showwarning(
+                "提示", "请至少添加一个执行步骤", parent=self.dialog)
             return
 
-        offsets = self._get_offsets()
-        if not offsets:
-            messagebox.showwarning("提示", "请至少添加一个偏移点击位置", parent=self.dialog)
-            return
-
-        # 保存配置
         config = load_tool_config()
         config['loop_healing'] = {
             'skill_image': skill_path,
             'member_image': member_path,
-            'offsets': offsets,
+            'steps': self.steps,
         }
         save_tool_config(config)
 
-        self.result = {
-            'skill_image': skill_path,
-            'member_image': member_path,
-            'offsets': offsets,
-        }
+        self.result = config['loop_healing']
         self.dialog.destroy()
