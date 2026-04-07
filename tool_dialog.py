@@ -195,6 +195,7 @@ class LoopHealingDialog:
         self.step_tree.configure(yscrollcommand=step_scroll.set)
         self.step_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         step_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.step_tree.bind('<Double-1>', lambda e: self._edit_step())
 
         # 操作按钮
         btn_row1 = ttk.Frame(step_frame)
@@ -205,6 +206,8 @@ class LoopHealingDialog:
                    command=self._add_member_step).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row1, text="+ 延迟", width=7,
                    command=self._add_delay_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="编辑", width=5,
+                   command=self._edit_step).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row1, text="删除", width=5,
                    command=self._delete_step).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row1, text="上移", width=5,
@@ -347,6 +350,84 @@ class LoopHealingDialog:
         if added[0]:
             self.steps.append({'type': 'delay', 'delay_ms': ms_var.get()})
             self._refresh_step_list()
+
+    def _edit_step(self):
+        """编辑选中步骤（双击或点击编辑按钮）"""
+        idx = self._get_selected_index()
+        if idx is None:
+            return
+        step = self.steps[idx]
+
+        if step['type'] == 'skill':
+            # 技能步骤无参数可编辑
+            return
+
+        popup = tk.Toplevel(self.dialog)
+        popup.resizable(False, False)
+        popup.transient(self.dialog)
+        popup.grab_set()
+
+        frame = ttk.Frame(popup, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        saved = [False]
+
+        def on_ok():
+            saved[0] = True
+            popup.destroy()
+
+        if step['type'] == 'member':
+            popup.title("编辑队员定位步骤")
+            popup.geometry("300x100")
+            row = ttk.Frame(frame)
+            row.pack(fill=tk.X)
+            ttk.Label(row, text="X偏移:").pack(side=tk.LEFT)
+            x_var = tk.IntVar(value=step.get('offset_x', 0))
+            ttk.Spinbox(row, from_=-1000, to=1000,
+                         textvariable=x_var, width=7).pack(
+                side=tk.LEFT, padx=5)
+            ttk.Label(row, text="Y偏移:").pack(side=tk.LEFT, padx=(10, 0))
+            y_var = tk.IntVar(value=step.get('offset_y', 0))
+            ttk.Spinbox(row, from_=-1000, to=1000,
+                         textvariable=y_var, width=7).pack(
+                side=tk.LEFT, padx=5)
+
+            btn_row = ttk.Frame(frame)
+            btn_row.pack(fill=tk.X, pady=(10, 0))
+            ttk.Button(btn_row, text="确定", command=on_ok).pack(
+                side=tk.RIGHT, padx=5)
+            ttk.Button(btn_row, text="取消",
+                       command=popup.destroy).pack(side=tk.RIGHT)
+
+            popup.wait_window()
+            if saved[0]:
+                step['offset_x'] = x_var.get()
+                step['offset_y'] = y_var.get()
+                self._refresh_step_list()
+
+        elif step['type'] == 'delay':
+            popup.title("编辑延迟步骤")
+            popup.geometry("250x90")
+            row = ttk.Frame(frame)
+            row.pack(fill=tk.X)
+            ttk.Label(row, text="延迟时间:").pack(side=tk.LEFT)
+            ms_var = tk.IntVar(value=step.get('delay_ms', 500))
+            ttk.Spinbox(row, from_=50, to=30000, increment=100,
+                         textvariable=ms_var, width=8).pack(
+                side=tk.LEFT, padx=5)
+            ttk.Label(row, text="ms").pack(side=tk.LEFT)
+
+            btn_row = ttk.Frame(frame)
+            btn_row.pack(fill=tk.X, pady=(10, 0))
+            ttk.Button(btn_row, text="确定", command=on_ok).pack(
+                side=tk.RIGHT, padx=5)
+            ttk.Button(btn_row, text="取消",
+                       command=popup.destroy).pack(side=tk.RIGHT)
+
+            popup.wait_window()
+            if saved[0]:
+                step['delay_ms'] = ms_var.get()
+                self._refresh_step_list()
 
     def _delete_step(self):
         """删除选中步骤"""

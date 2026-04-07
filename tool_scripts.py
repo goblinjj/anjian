@@ -180,34 +180,36 @@ class LoopHealingEngine:
 
             while not self.should_stop:
                 count += 1
-                rect = self.window_manager.get_window_rect()
-                if not rect:
-                    self._log("错误: 无法获取窗口坐标")
-                    break
+                self._log(f"[第{count}轮]")
 
-                # 每轮开始时定位队员基准位置
-                member_pos = self._find_template(member_image, rect)
-                if not member_pos:
-                    self._log("未找到队员定位图片，等待重试...")
-                    time.sleep(1)
-                    continue
-
-                mx, my, conf = member_pos
-                self._log(f"[第{count}轮] 队员基准 ({mx},{my}) 置信度:{conf:.2f}")
-
-                # 按步骤序列依次执行
+                # 按步骤序列依次执行，按需检测对应图片
                 for i, step in enumerate(steps):
                     if self.should_stop:
                         break
 
+                    rect = self.window_manager.get_window_rect()
+                    if not rect:
+                        self._log("错误: 无法获取窗口坐标")
+                        self.should_stop = True
+                        break
+
                     if step['type'] == 'skill':
-                        rect = self.window_manager.get_window_rect()
-                        if not rect:
-                            break
+                        # 查找治疗技能图片
                         skill_pos = self._find_template(skill_image, rect)
                         if not skill_pos:
-                            self._log(f"  步骤{i+1}: 未找到治疗技能，跳过")
-                            continue
+                            self._log(f"  步骤{i+1}: 未找到治疗技能，等待...")
+                            # 持续等待直到找到或停止
+                            while not self.should_stop:
+                                time.sleep(0.5)
+                                rect = self.window_manager.get_window_rect()
+                                if not rect:
+                                    break
+                                skill_pos = self._find_template(
+                                    skill_image, rect)
+                                if skill_pos:
+                                    break
+                            if not skill_pos or self.should_stop:
+                                break
                         sx, sy, _ = skill_pos
                         pyautogui.moveTo(sx, sy)
                         time.sleep(0.2)
@@ -217,6 +219,22 @@ class LoopHealingEngine:
                         self._log(f"  步骤{i+1}: 点击治疗技能")
 
                     elif step['type'] == 'member':
+                        # 查找队员定位图片获取基准坐标
+                        member_pos = self._find_template(member_image, rect)
+                        if not member_pos:
+                            self._log(f"  步骤{i+1}: 未找到队员定位，等待...")
+                            while not self.should_stop:
+                                time.sleep(0.5)
+                                rect = self.window_manager.get_window_rect()
+                                if not rect:
+                                    break
+                                member_pos = self._find_template(
+                                    member_image, rect)
+                                if member_pos:
+                                    break
+                            if not member_pos or self.should_stop:
+                                break
+                        mx, my, _ = member_pos
                         ox = step.get('offset_x', 0)
                         oy = step.get('offset_y', 0)
                         click_x = mx + ox
