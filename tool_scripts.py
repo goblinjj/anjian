@@ -228,6 +228,15 @@ class LoopHealingEngine:
                         pyautogui.click()
                         self._log(f"  步骤{i+1}: 队员({ox},{oy})")
 
+                    elif step['type'] == 'delay':
+                        delay_ms = step.get('delay_ms', 500)
+                        self._log(f"  步骤{i+1}: 延迟 {delay_ms}ms")
+                        delay_end = time.time() + delay_ms / 1000.0
+                        while time.time() < delay_end:
+                            if self.should_stop:
+                                break
+                            time.sleep(0.05)
+
         except Exception as e:
             self._log(f"循环医疗出错: {str(e)}")
         finally:

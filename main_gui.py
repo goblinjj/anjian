@@ -360,8 +360,11 @@ class CraftAssistantGUI:
             # 显示步骤摘要
             skill_count = sum(1 for s in steps if s['type'] == 'skill')
             member_count = sum(1 for s in steps if s['type'] == 'member')
-            lines.append(f"执行步骤: {len(steps)} 个 "
-                         f"(技能x{skill_count}, 队员x{member_count})")
+            delay_count = sum(1 for s in steps if s['type'] == 'delay')
+            summary = f"技能x{skill_count}, 队员x{member_count}"
+            if delay_count:
+                summary += f", 延迟x{delay_count}"
+            lines.append(f"执行步骤: {len(steps)} 个 ({summary})")
             if not (skill_ok and member_ok and steps):
                 lines.append("\n(需先点击「配置」截取图片并添加步骤)")
 

@@ -181,7 +181,7 @@ class LoopHealingDialog:
         step_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
         ttk.Label(step_frame,
-                  text="自由组合技能和队员步骤，例如: 技能→队员1→队员2→队员3→技能→队员4",
+                  text="自由组合步骤，例如: 技能→队员1→队员2→延迟500ms→技能→队员3",
                   foreground='gray').pack(anchor=tk.W, pady=(0, 5))
 
         # 步骤列表 (Treeview)
@@ -199,11 +199,13 @@ class LoopHealingDialog:
         # 操作按钮
         btn_row1 = ttk.Frame(step_frame)
         btn_row1.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(btn_row1, text="+ 技能步骤", width=10,
+        ttk.Button(btn_row1, text="+ 技能", width=7,
                    command=self._add_skill_step).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_row1, text="+ 队员步骤", width=10,
+        ttk.Button(btn_row1, text="+ 队员", width=7,
                    command=self._add_member_step).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_row1, text="删除", width=6,
+        ttk.Button(btn_row1, text="+ 延迟", width=7,
+                   command=self._add_delay_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row1, text="删除", width=5,
                    command=self._delete_step).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row1, text="上移", width=5,
                    command=self._move_up).pack(side=tk.LEFT, padx=2)
@@ -234,10 +236,13 @@ class LoopHealingDialog:
         for i, step in enumerate(self.steps):
             if step['type'] == 'skill':
                 text = f"#{i+1}  治疗技能"
-            else:
+            elif step['type'] == 'member':
                 ox = step.get('offset_x', 0)
                 oy = step.get('offset_y', 0)
                 text = f"#{i+1}  队员定位 (X:{ox}, Y:{oy})"
+            elif step['type'] == 'delay':
+                ms = step.get('delay_ms', 500)
+                text = f"#{i+1}  延迟 {ms}ms"
             self.step_tree.insert('', 'end', text=text)
 
         # 恢复选中
@@ -302,6 +307,45 @@ class LoopHealingDialog:
                 'offset_x': x_var.get(),
                 'offset_y': y_var.get(),
             })
+            self._refresh_step_list()
+
+    def _add_delay_step(self):
+        """添加延迟步骤（弹出输入延迟时间）"""
+        popup = tk.Toplevel(self.dialog)
+        popup.title("添加延迟步骤")
+        popup.geometry("250x90")
+        popup.resizable(False, False)
+        popup.transient(self.dialog)
+        popup.grab_set()
+
+        frame = ttk.Frame(popup, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="延迟时间:").pack(side=tk.LEFT)
+        ms_var = tk.IntVar(value=500)
+        ttk.Spinbox(row, from_=50, to=30000, increment=100,
+                     textvariable=ms_var, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Label(row, text="ms").pack(side=tk.LEFT)
+
+        added = [False]
+
+        def on_ok():
+            added[0] = True
+            popup.destroy()
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(btn_row, text="添加", command=on_ok).pack(
+            side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消", command=popup.destroy).pack(
+            side=tk.RIGHT)
+
+        popup.wait_window()
+
+        if added[0]:
+            self.steps.append({'type': 'delay', 'delay_ms': ms_var.get()})
             self._refresh_step_list()
 
     def _delete_step(self):
