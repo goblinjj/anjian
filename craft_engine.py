@@ -245,7 +245,9 @@ class CraftEngine:
                         time.sleep(1.0)
                         self._log("整理背包: 关闭背包...")
                         pyautogui.hotkey('ctrl', 'e')
-                        time.sleep(1.0)
+                        time.sleep(0.5)
+                        pyautogui.moveTo(50, 50)
+                        time.sleep(0.5)
                         # 整理后物品位置会变，跳回循环顶部重新扫描
                         self._log("整理完成，重新扫描背包...")
                         continue
