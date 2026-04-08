@@ -159,10 +159,39 @@ class CraftEngine:
                     self._log(f"材料{i+1}: {info}")
 
                 if not all_matched:
-                    self._log("材料不足，暂停等待...")
-                    while not self._check_stop():
-                        time.sleep(1)
-                    break
+                    if not organize_button_path or self._check_stop():
+                        self._log("材料不足，停止任务")
+                        break
+
+                    # 整理背包后重新检查
+                    self._log("材料不足，尝试整理背包后重新检查...")
+                    self._do_organize(organize_button_path, window_rect)
+                    if self._check_stop():
+                        break
+
+                    # 重新扫描并匹配
+                    grid2, info2 = self.backpack_reader.locate_grid(window_rect)
+                    if not grid2:
+                        self._log(f"整理后定位失败: {info2}")
+                        break
+                    slots2 = self.backpack_reader.scan_backpack(grid2)
+                    matched_slots = []
+                    all_matched2 = True
+                    for i, mat in enumerate(materials):
+                        mat_image_path = os.path.join(
+                            recipe_dir, mat['image_file'])
+                        slot, info = self.backpack_reader.match_item(
+                            slots2, mat_image_path, mat['quantity'])
+                        if slot is None:
+                            self._log(f"材料{i+1}: {info}")
+                            all_matched2 = False
+                            break
+                        matched_slots.append(slot)
+                        self._log(f"材料{i+1}: {info}")
+
+                    if not all_matched2:
+                        self._log("整理背包后材料仍不足，停止任务")
+                        break
 
                 if self._check_stop():
                     break
@@ -241,19 +270,8 @@ class CraftEngine:
                         has_empty = any(s.is_empty for s in chk_slots)
                         if not has_empty:
                             self._log("背包无空格子，整理背包...")
-                            pyautogui.hotkey('ctrl', 'e')
-                            time.sleep(0.5)
-                            self._click_template(
-                                organize_button_path, window_rect,
-                                pre_delay=0.5, long_press=True)
-                            time.sleep(1.0)
-                            self._log("整理背包: 关闭背包...")
-                            pyautogui.hotkey('ctrl', 'e')
-                            time.sleep(0.5)
-                            pyautogui.moveTo(
-                                window_rect[0] + 50, window_rect[1] + 50)
-                            time.sleep(0.5)
-                            self._log("整理完成，重新扫描背包...")
+                            self._do_organize(organize_button_path, window_rect)
+                            self._log("重新扫描背包...")
                             continue
 
                 # 短暂间隔再开始下一轮
@@ -264,6 +282,22 @@ class CraftEngine:
         finally:
             self.is_running = False
             self._log("制造已停止")
+
+    def _do_organize(self, organize_button_path, window_rect):
+        """执行一次整理背包操作"""
+        self._log("整理背包: 打开背包...")
+        pyautogui.hotkey('ctrl', 'e')
+        time.sleep(0.5)
+        self._click_template(
+            organize_button_path, window_rect,
+            pre_delay=0.5, long_press=True)
+        time.sleep(1.0)
+        self._log("整理背包: 关闭背包...")
+        pyautogui.hotkey('ctrl', 'e')
+        time.sleep(0.5)
+        pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
+        time.sleep(0.5)
+        self._log("整理完成")
 
     def _click_template(self, template_path, window_rect, pre_delay=0.2, long_press=False):
         """在窗口中查找模板并点击
