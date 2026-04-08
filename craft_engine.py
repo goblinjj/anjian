@@ -190,7 +190,7 @@ class CraftEngine:
                 time.sleep(0.3)
 
                 # 鼠标移开，避免遮挡按钮影响图像识别
-                pyautogui.moveTo(100, 100)
+                pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
                 time.sleep(0.2)
 
                 # 9. 等待制造完成
@@ -212,7 +212,7 @@ class CraftEngine:
                                 break
                             self._log(f"点击制造完成按钮(第{click_attempt+1}次)...")
                             self._click_template(completion_image_path, window_rect)
-                            pyautogui.moveTo(100, 100)
+                            pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
                             time.sleep(0.5)
                             # 确认按钮是否已消失
                             still_found = self._find_template(
@@ -246,7 +246,7 @@ class CraftEngine:
                         self._log("整理背包: 关闭背包...")
                         pyautogui.hotkey('ctrl', 'e')
                         time.sleep(0.5)
-                        pyautogui.moveTo(50, 50)
+                        pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
                         time.sleep(0.5)
                         # 整理后物品位置会变，跳回循环顶部重新扫描
                         self._log("整理完成，重新扫描背包...")

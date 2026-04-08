@@ -198,7 +198,7 @@ class LoopHealingEngine:
                         skill_pos = self._find_template(skill_image, rect)
                         if not skill_pos:
                             self._log(f"  步骤{i+1}: 未找到治疗技能，移开鼠标重试...")
-                            pyautogui.moveTo(50, 50)
+                            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -208,7 +208,7 @@ class LoopHealingEngine:
                                     skill_image, rect)
                                 if skill_pos:
                                     break
-                                pyautogui.moveTo(50, 50)
+                                pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
                             if not skill_pos or self.should_stop:
                                 break
                         sx, sy, _ = skill_pos
@@ -224,7 +224,7 @@ class LoopHealingEngine:
                         member_pos = self._find_template(member_image, rect)
                         if not member_pos:
                             self._log(f"  步骤{i+1}: 未找到队员定位，移开鼠标重试...")
-                            pyautogui.moveTo(50, 50)
+                            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -234,7 +234,7 @@ class LoopHealingEngine:
                                     member_image, rect)
                                 if member_pos:
                                     break
-                                pyautogui.moveTo(50, 50)
+                                pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
                             if not member_pos or self.should_stop:
                                 break
                         mx, my, _ = member_pos
