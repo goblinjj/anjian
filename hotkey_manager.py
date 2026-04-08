@@ -100,14 +100,24 @@ class HotkeyManager:
             self._get_material_hook = None
         self.is_listening = False
 
+    @staticmethod
+    def _clear_hotkey_char():
+        """按退格键清除快捷键输入的字符"""
+        try:
+            keyboard.press_and_release('backspace')
+        except Exception:
+            pass
+
     def _on_start_hotkey(self):
         """快捷键启动执行"""
+        self._clear_hotkey_char()
         if self.gui.is_running or self.gui._tool_stop_callback:
             return
         self.gui.root.after(0, self.gui.start_selected)
 
     def _on_stop_hotkey(self):
         """快捷键停止执行（制造或工具脚本）"""
+        self._clear_hotkey_char()
         if self.gui._tool_stop_callback:
             self.gui.root.after(0, self.gui._tool_stop_callback)
         elif self.gui.is_running:
@@ -115,6 +125,7 @@ class HotkeyManager:
 
     def _on_get_material_hotkey(self):
         """快捷键触发获取材料（全局，不受其他功能影响）"""
+        self._clear_hotkey_char()
         self.gui.root.after(0, self.gui._trigger_get_material)
 
     def update_hotkeys(self, start_key, stop_key):
