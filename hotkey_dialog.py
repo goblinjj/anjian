@@ -96,7 +96,7 @@ class HotkeySettingsDialog:
     def _record_key(self, which):
         """后台线程录制按键"""
         try:
-            key = keyboard.read_key(suppress=False)
+            key = keyboard.read_hotkey(suppress=False)
             self.dialog.after(0, self._on_key_recorded, which, key)
         except Exception:
             self.dialog.after(0, self._on_record_failed, which)

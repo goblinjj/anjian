@@ -685,7 +685,7 @@ class GetMaterialDialog:
     def _record_key(self):
         import keyboard
         try:
-            key = keyboard.read_key(suppress=False)
+            key = keyboard.read_hotkey(suppress=False)
             self.dialog.after(0, self._on_key_recorded, key)
         except Exception:
             self.dialog.after(0, self._on_record_failed)
