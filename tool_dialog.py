@@ -19,7 +19,11 @@ def load_tool_config():
     """加载工具脚本配置"""
     defaults = {
         'auto_encounter': {
-            'offset': 200,
+            'point1_x': -200,
+            'point1_y': 200,
+            'point2_x': 200,
+            'point2_y': -200,
+            'click_delay': 500,
         },
         'loop_healing': {
             'skill_image': '',
@@ -34,6 +38,15 @@ def load_tool_config():
             for key in defaults:
                 if key in saved:
                     defaults[key].update(saved[key])
+            # 向后兼容: 旧版 offset 单值转换为双点格式
+            ae = defaults['auto_encounter']
+            if 'offset' in ae and 'point1_x' not in saved.get('auto_encounter', {}):
+                old_offset = ae.pop('offset')
+                ae.setdefault('point1_x', -old_offset)
+                ae.setdefault('point1_y', old_offset)
+                ae.setdefault('point2_x', old_offset)
+                ae.setdefault('point2_y', -old_offset)
+            ae.pop('offset', None)
             # 向后兼容: 旧版 offsets 格式转换为 steps
             lh = defaults['loop_healing']
             if 'offsets' in lh and not lh.get('steps'):
@@ -60,7 +73,7 @@ def save_tool_config(config):
 class AutoEncounterDialog:
     """自动遇敌配置对话框
 
-    result: {'offset': int} 或 None（取消）
+    result: {'point1_x','point1_y','point2_x','point2_y'} 或 None（取消）
     """
 
     def __init__(self, parent):
@@ -69,7 +82,7 @@ class AutoEncounterDialog:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("自动遇敌 - 配置")
-        self.dialog.geometry("420x220")
+        self.dialog.geometry("420x340")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -84,22 +97,66 @@ class AutoEncounterDialog:
         desc = ttk.LabelFrame(main, text="说明", padding=10)
         desc.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(desc, wraplength=370,
-                  text="根据绑定窗口的中心位置，在左下和右上两个偏移点之间\n"
+                  text="根据绑定窗口的中心位置，在两个自定义偏移点之间\n"
                        "循环移动鼠标并点击，用于自动遇敌。\n"
-                       "流程: 左下点击 → 右上点击 → 循环"
+                       "偏移值基于窗口中心: X正=右, X负=左, Y正=下, Y负=上\n"
+                       "流程: 点1点击 → 点2点击 → 循环"
                   ).pack(anchor=tk.W)
 
-        params = ttk.LabelFrame(main, text="参数设置", padding=10)
+        params = ttk.LabelFrame(main, text="偏移点设置 (相对窗口中心)", padding=10)
         params.pack(fill=tk.X, pady=(0, 10))
 
-        row = ttk.Frame(params)
-        row.pack(fill=tk.X, pady=3)
-        ttk.Label(row, text="偏移距离:", width=10).pack(side=tk.LEFT)
-        self.offset_var = tk.IntVar(value=self.config.get('offset', 200))
-        ttk.Spinbox(row, from_=50, to=500, increment=10,
-                    textvariable=self.offset_var, width=8).pack(
+        # 点1
+        row1_label = ttk.Frame(params)
+        row1_label.pack(fill=tk.X, pady=(0, 3))
+        ttk.Label(row1_label, text="点1 (默认左下):",
+                  font=('', 9, 'bold')).pack(side=tk.LEFT)
+
+        row1 = ttk.Frame(params)
+        row1.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(row1, text="X偏移:").pack(side=tk.LEFT)
+        self.p1x_var = tk.IntVar(value=self.config.get('point1_x', -200))
+        ttk.Spinbox(row1, from_=-2000, to=2000, increment=10,
+                    textvariable=self.p1x_var, width=7).pack(
             side=tk.LEFT, padx=5)
-        ttk.Label(row, text="像素 (从中心向左下/右上偏移)",
+        ttk.Label(row1, text="Y偏移:").pack(side=tk.LEFT, padx=(10, 0))
+        self.p1y_var = tk.IntVar(value=self.config.get('point1_y', 200))
+        ttk.Spinbox(row1, from_=-2000, to=2000, increment=10,
+                    textvariable=self.p1y_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+
+        # 点2
+        row2_label = ttk.Frame(params)
+        row2_label.pack(fill=tk.X, pady=(0, 3))
+        ttk.Label(row2_label, text="点2 (默认右上):",
+                  font=('', 9, 'bold')).pack(side=tk.LEFT)
+
+        row2 = ttk.Frame(params)
+        row2.pack(fill=tk.X, pady=(0, 3))
+        ttk.Label(row2, text="X偏移:").pack(side=tk.LEFT)
+        self.p2x_var = tk.IntVar(value=self.config.get('point2_x', 200))
+        ttk.Spinbox(row2, from_=-2000, to=2000, increment=10,
+                    textvariable=self.p2x_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(row2, text="Y偏移:").pack(side=tk.LEFT, padx=(10, 0))
+        self.p2y_var = tk.IntVar(value=self.config.get('point2_y', -200))
+        ttk.Spinbox(row2, from_=-2000, to=2000, increment=10,
+                    textvariable=self.p2y_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+
+        # 点击延迟
+        delay_frame = ttk.LabelFrame(main, text="点击延迟", padding=10)
+        delay_frame.pack(fill=tk.X, pady=(0, 10))
+
+        delay_row = ttk.Frame(delay_frame)
+        delay_row.pack(fill=tk.X)
+        ttk.Label(delay_row, text="延迟时间:").pack(side=tk.LEFT)
+        self.delay_var = tk.IntVar(
+            value=self.config.get('click_delay', 500))
+        ttk.Spinbox(delay_row, from_=50, to=5000, increment=50,
+                    textvariable=self.delay_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(delay_row, text="ms (每次移动/点击后的等待时间)",
                   foreground='gray').pack(side=tk.LEFT, padx=5)
 
         btn_frame = ttk.Frame(main)
@@ -110,11 +167,17 @@ class AutoEncounterDialog:
                    command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
 
     def _save(self):
-        offset = self.offset_var.get()
+        data = {
+            'point1_x': self.p1x_var.get(),
+            'point1_y': self.p1y_var.get(),
+            'point2_x': self.p2x_var.get(),
+            'point2_y': self.p2y_var.get(),
+            'click_delay': self.delay_var.get(),
+        }
         config = load_tool_config()
-        config['auto_encounter']['offset'] = offset
+        config['auto_encounter'] = data
         save_tool_config(config)
-        self.result = {'offset': offset}
+        self.result = data
         self.dialog.destroy()
 
 

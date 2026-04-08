@@ -28,8 +28,8 @@ from screenshot_util import take_screenshot
 TOOL_INFO = {
     'auto_encounter': {
         'name': '自动遇敌',
-        'desc': '在绑定窗口中心的左下和右上偏移点之间循环点击，用于自动遇敌。\n'
-                '流程: 左下点击 → 右上点击 → 循环',
+        'desc': '在绑定窗口中心的两个自定义偏移点之间循环点击，用于自动遇敌。\n'
+                '流程: 点1点击 → 点2点击 → 循环',
     },
     'loop_healing': {
         'name': '循环医疗',
@@ -346,7 +346,14 @@ class CraftAssistantGUI:
 
         if tool_id == 'auto_encounter':
             cfg = config.get('auto_encounter', {})
-            lines.append(f"\n偏移距离: {cfg.get('offset', 200)} 像素")
+            p1x = cfg.get('point1_x', -200)
+            p1y = cfg.get('point1_y', 200)
+            p2x = cfg.get('point2_x', 200)
+            p2y = cfg.get('point2_y', -200)
+            delay = cfg.get('click_delay', 500)
+            lines.append(f"\n点1偏移: ({p1x}, {p1y})")
+            lines.append(f"点2偏移: ({p2x}, {p2y})")
+            lines.append(f"点击延迟: {delay}ms")
 
         elif tool_id == 'loop_healing':
             cfg = config.get('loop_healing', {})
@@ -513,10 +520,15 @@ class CraftAssistantGUI:
     def _start_auto_encounter(self):
         """启动自动遇敌（直接使用已保存配置）"""
         config = load_tool_config().get('auto_encounter', {})
-        offset = config.get('offset', 200)
 
         engine = AutoEncounterEngine(self.window_manager, self._log_message)
-        engine.start(offset)
+        engine.start(
+            point1_x=config.get('point1_x', -200),
+            point1_y=config.get('point1_y', 200),
+            point2_x=config.get('point2_x', 200),
+            point2_y=config.get('point2_y', -200),
+            click_delay=config.get('click_delay', 500),
+        )
         self._active_tool_engine = engine
         self._tool_stop_callback = self._stop_tool
         self.start_btn.config(state=tk.DISABLED)

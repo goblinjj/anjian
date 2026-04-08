@@ -28,13 +28,16 @@ class AutoEncounterEngine:
         self.is_running = False
         self._thread = None
 
-    def start(self, offset=200):
+    def start(self, point1_x=-200, point1_y=200, point2_x=200, point2_y=-200,
+              click_delay=500):
         if self.is_running:
             return
         self.should_stop = False
         self.is_running = True
         self._thread = threading.Thread(
-            target=self._run, args=(offset,), daemon=True)
+            target=self._run,
+            args=(point1_x, point1_y, point2_x, point2_y, click_delay),
+            daemon=True)
         self._thread.start()
 
     def stop(self):
@@ -44,7 +47,7 @@ class AutoEncounterEngine:
         if self.status_callback:
             self.status_callback(message)
 
-    def _run(self, offset):
+    def _run(self, point1_x, point1_y, point2_x, point2_y, click_delay):
         try:
             if not self.window_manager.is_window_valid():
                 self._log("错误: 未绑定游戏窗口")
@@ -59,15 +62,17 @@ class AutoEncounterEngine:
             center_x = left + width // 2
             center_y = top + height // 2
 
-            # 左下: X减小, Y增大（屏幕坐标Y向下增大）
-            bl_x = center_x - offset
-            bl_y = center_y + offset
-            # 右上: X增大, Y减小
-            tr_x = center_x + offset
-            tr_y = center_y - offset
+            # 基于窗口中心的两个偏移点
+            bl_x = center_x + point1_x
+            bl_y = center_y + point1_y
+            tr_x = center_x + point2_x
+            tr_y = center_y + point2_y
+
+            delay_sec = click_delay / 1000.0
 
             self._log(f"窗口中心: ({center_x}, {center_y})")
-            self._log(f"左下: ({bl_x}, {bl_y}), 右上: ({tr_x}, {tr_y})")
+            self._log(f"点1: ({bl_x}, {bl_y}), 点2: ({tr_x}, {tr_y})")
+            self._log(f"点击延迟: {click_delay}ms")
             self._log("开始自动遇敌循环...")
 
             count = 0
@@ -75,20 +80,20 @@ class AutoEncounterEngine:
                 count += 1
 
                 pyautogui.moveTo(bl_x, bl_y)
-                time.sleep(0.5)
+                time.sleep(delay_sec)
                 if self.should_stop:
                     break
                 pyautogui.click()
-                time.sleep(0.5)
+                time.sleep(delay_sec)
                 if self.should_stop:
                     break
 
                 pyautogui.moveTo(tr_x, tr_y)
-                time.sleep(0.5)
+                time.sleep(delay_sec)
                 if self.should_stop:
                     break
                 pyautogui.click()
-                time.sleep(0.5)
+                time.sleep(delay_sec)
 
                 if count % 10 == 0:
                     self._log(f"已循环 {count} 次")
