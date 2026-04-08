@@ -594,7 +594,7 @@ class GetMaterialDialog:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("获取材料 - 配置")
-        self.dialog.geometry("420x280")
+        self.dialog.geometry("420x360")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
