@@ -333,29 +333,38 @@ class GetMaterialEngine:
             x, y = pyautogui.position()
             pyautogui.doubleClick(x, y)
             self._log(f"  双击当前位置 ({x}, {y})")
-            time.sleep(0.2)
 
-            # 2. 查找图片并点击
+            # 2. 等待 300ms
+            time.sleep(0.3)
+
+            # 3. 循环查找材料图片，找到后点击
             rect = self.window_manager.get_window_rect()
             if not rect:
                 self._log("  错误: 无法获取窗口坐标")
                 return
 
-            pos = self._find_template(material_image, rect)
+            pos = None
+            for attempt in range(30):  # 最多重试30次(约6秒)
+                pos = self._find_template(material_image, rect)
+                if pos:
+                    break
+                time.sleep(0.2)
+
             if not pos:
                 self._log("  未找到材料图片")
                 return
 
             mx, my, _ = pos
             pyautogui.moveTo(mx, my)
-            time.sleep(0.2)
             pyautogui.click()
             self._log(f"  点击材料图片 ({mx}, {my})")
-            time.sleep(0.2)
 
-            # 3. Ctrl+E 打开背包
+            # 4. 等待 300ms
+            time.sleep(0.3)
+
+            # 5. Ctrl+E 打开背包
             pyautogui.hotkey('ctrl', 'e')
-            self._log("  按下 Ctrl+E 打开背包")
+            self._log("  按下 Ctrl+E")
 
             self._log("获取材料: 执行完成")
 

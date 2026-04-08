@@ -30,7 +30,10 @@ def load_tool_config():
             'member_image': '',
             'steps': [],
         },
-        'get_material': {}
+        'get_material': {
+            'material_image': '',
+            'hotkey': '+',
+        }
     }
     if os.path.exists(TOOL_CONFIG_FILE):
         try:
@@ -574,4 +577,149 @@ class LoopHealingDialog:
         save_tool_config(config)
 
         self.result = config['loop_healing']
+        self.dialog.destroy()
+
+
+class GetMaterialDialog:
+    """获取材料配置对话框
+
+    配置材料图片和触发快捷键。
+    result: {'material_image': str, 'hotkey': str} 或 None（取消）
+    """
+
+    def __init__(self, parent, screenshot_callback):
+        self.result = None
+        self.screenshot_callback = screenshot_callback
+        self.config = load_tool_config()['get_material']
+
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("获取材料 - 配置")
+        self.dialog.geometry("420x280")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        self._recording = False
+        self._create_widgets()
+        self.dialog.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.dialog.wait_window()
+
+    def _create_widgets(self):
+        main = ttk.Frame(self.dialog, padding=15)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        desc = ttk.LabelFrame(main, text="说明", padding=10)
+        desc.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(desc, wraplength=370,
+                  text="按快捷键执行一次获取材料:\n"
+                       "1. 双击当前鼠标位置\n"
+                       "2. 等待后查找并点击材料图片\n"
+                       "3. 按 Ctrl+E 打开背包"
+                  ).pack(anchor=tk.W)
+
+        # 图片模板
+        img_frame = ttk.LabelFrame(main, text="图片模板", padding=10)
+        img_frame.pack(fill=tk.X, pady=(0, 10))
+
+        row = ttk.Frame(img_frame)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="材料图片:", width=10).pack(side=tk.LEFT)
+        mat_path = self.config.get('material_image', '')
+        has_img = bool(mat_path) and os.path.exists(mat_path)
+        self.img_status = ttk.Label(
+            row, text="已设置 ✓" if has_img else "未设置 ✗", width=10)
+        self.img_status.pack(side=tk.LEFT, padx=5)
+        ttk.Button(row, text="截图", width=6,
+                   command=self._capture).pack(side=tk.LEFT, padx=5)
+
+        # 快捷键
+        hotkey_frame = ttk.LabelFrame(main, text="触发快捷键", padding=10)
+        hotkey_frame.pack(fill=tk.X, pady=(0, 10))
+
+        hk_row = ttk.Frame(hotkey_frame)
+        hk_row.pack(fill=tk.X)
+        ttk.Label(hk_row, text="快捷键:", width=10).pack(side=tk.LEFT)
+        self.hotkey_var = tk.StringVar(
+            value=self.config.get('hotkey', '+'))
+        self.hotkey_label = ttk.Label(
+            hk_row, textvariable=self.hotkey_var,
+            width=12, relief='sunken', anchor='center')
+        self.hotkey_label.pack(side=tk.LEFT, padx=5)
+        self.record_btn = ttk.Button(
+            hk_row, text="录制", width=6, command=self._start_recording)
+        self.record_btn.pack(side=tk.LEFT, padx=5)
+
+        btn_frame = ttk.Frame(main)
+        btn_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Button(btn_frame, text="确定",
+                   command=self._save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="取消",
+                   command=self._on_close).pack(side=tk.RIGHT, padx=5)
+
+    def _capture(self):
+        os.makedirs(TOOLS_DIR, exist_ok=True)
+        save_path = os.path.join(TOOLS_DIR, 'get_material.png')
+        self.dialog.grab_release()
+        self.dialog.withdraw()
+        success = self.screenshot_callback(save_path)
+        self.dialog.deiconify()
+        self.dialog.grab_set()
+        if success and os.path.exists(save_path):
+            self.config['material_image'] = save_path
+            self.img_status.config(text="已设置 ✓")
+            # 立即保存
+            config = load_tool_config()
+            config['get_material']['material_image'] = save_path
+            save_tool_config(config)
+
+    def _start_recording(self):
+        if self._recording:
+            return
+        self._recording = True
+        self.record_btn.config(text="请按键...", state=tk.DISABLED)
+        import threading
+        import keyboard
+        threading.Thread(
+            target=self._record_key, daemon=True).start()
+
+    def _record_key(self):
+        import keyboard
+        try:
+            key = keyboard.read_key(suppress=False)
+            self.dialog.after(0, self._on_key_recorded, key)
+        except Exception:
+            self.dialog.after(0, self._on_record_failed)
+
+    def _on_key_recorded(self, key):
+        self._recording = False
+        self.hotkey_var.set(key)
+        self.record_btn.config(text="录制", state=tk.NORMAL)
+
+    def _on_record_failed(self):
+        self._recording = False
+        self.record_btn.config(text="录制", state=tk.NORMAL)
+
+    def _save(self):
+        mat_path = self.config.get('material_image', '')
+        if not mat_path or not os.path.exists(mat_path):
+            messagebox.showwarning(
+                "提示", "请先截取材料图片", parent=self.dialog)
+            return
+
+        hotkey = self.hotkey_var.get().strip()
+        if not hotkey:
+            messagebox.showwarning(
+                "提示", "请设置快捷键", parent=self.dialog)
+            return
+
+        config = load_tool_config()
+        config['get_material'] = {
+            'material_image': mat_path,
+            'hotkey': hotkey,
+        }
+        save_tool_config(config)
+        self.result = config['get_material']
+        self.dialog.destroy()
+
+    def _on_close(self):
         self.dialog.destroy()

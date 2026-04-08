@@ -20,7 +20,7 @@ from craft_engine import CraftEngine
 from hotkey_manager import HotkeyManager
 from hotkey_dialog import HotkeySettingsDialog
 from tool_dialog import (AutoEncounterDialog, LoopHealingDialog,
-                         load_tool_config)
+                         GetMaterialDialog, load_tool_config)
 from tool_scripts import AutoEncounterEngine, LoopHealingEngine, GetMaterialEngine
 from screenshot_util import take_screenshot
 
@@ -386,13 +386,14 @@ class CraftAssistantGUI:
                 lines.append("\n(需先点击「配置」截取图片并添加步骤)")
 
         elif tool_id == 'get_material':
-            mat = self.settings.get('get_material_image', '')
+            gm_cfg = config.get('get_material', {})
+            mat = gm_cfg.get('material_image', '')
             mat_ok = bool(mat) and os.path.exists(mat)
-            hotkey = self.hotkey_manager.get_material_hotkey
+            hotkey = gm_cfg.get('hotkey', '+')
             lines.append(f"\n材料图片: {'已设置' if mat_ok else '未设置'}")
             lines.append(f"触发快捷键: {hotkey}")
             if not mat_ok:
-                lines.append("\n(需先在「设置」中截取获取材料图片)")
+                lines.append("\n(需先点击「配置」截取材料图片)")
 
         self.info_label.config(text='\n'.join(lines), foreground='black')
 
@@ -522,8 +523,10 @@ class CraftAssistantGUI:
             if dialog.result:
                 self._show_tool_info('loop_healing')
         elif self._selected_tool_id == 'get_material':
-            self._open_settings()
-            self._show_tool_info('get_material')
+            dialog = GetMaterialDialog(self.root, self._screenshot_region)
+            if dialog.result:
+                self.hotkey_manager.reload_get_material_hotkey()
+                self._show_tool_info('get_material')
 
     def _start_selected_tool(self):
         """启动当前选中的工具"""
@@ -611,9 +614,10 @@ class CraftAssistantGUI:
 
     def _trigger_get_material(self):
         """快捷键触发获取材料（全局，不受其他功能运行状态影响）"""
-        mat_img = self.settings.get('get_material_image', '')
+        cfg = load_tool_config().get('get_material', {})
+        mat_img = cfg.get('material_image', '')
         if not mat_img or not os.path.exists(mat_img):
-            self._log_message("获取材料: 未配置材料图片，请在「设置」中截取")
+            self._log_message("获取材料: 未配置材料图片，请先配置")
             return
         self.get_material_engine.execute(mat_img)
 

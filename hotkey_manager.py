@@ -26,6 +26,7 @@ class HotkeyManager:
         self._get_material_hook = None
         self.is_listening = False
         self._load_hotkey_config()
+        self._load_get_material_hotkey()
 
     def _load_hotkey_config(self):
         """从配置文件加载快捷键设置"""
@@ -35,8 +36,15 @@ class HotkeyManager:
                     config = json.load(f)
                 self.global_start_hotkey = config.get("start_hotkey", "`")
                 self.global_stop_hotkey = config.get("stop_hotkey", "esc")
-                self.get_material_hotkey = config.get(
-                    "get_material_hotkey", "+")
+        except Exception:
+            pass
+
+    def _load_get_material_hotkey(self):
+        """从工具配置加载获取材料快捷键"""
+        try:
+            from tool_dialog import load_tool_config
+            cfg = load_tool_config().get('get_material', {})
+            self.get_material_hotkey = cfg.get('hotkey', '+')
         except Exception:
             pass
 
@@ -45,7 +53,6 @@ class HotkeyManager:
         config = {
             "start_hotkey": self.global_start_hotkey,
             "stop_hotkey": self.global_stop_hotkey,
-            "get_material_hotkey": self.get_material_hotkey,
         }
         try:
             with open(HOTKEY_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -110,13 +117,16 @@ class HotkeyManager:
         """快捷键触发获取材料（全局，不受其他功能影响）"""
         self.gui.root.after(0, self.gui._trigger_get_material)
 
-    def update_hotkeys(self, start_key, stop_key, get_material_key=None):
-        """更新全局快捷键"""
+    def update_hotkeys(self, start_key, stop_key):
+        """更新启动/停止快捷键"""
         self.global_start_hotkey = start_key
         self.global_stop_hotkey = stop_key
-        if get_material_key is not None:
-            self.get_material_hotkey = get_material_key
         self._save_hotkey_config()
+        self.start_global_hotkey_listener()
+
+    def reload_get_material_hotkey(self):
+        """从工具配置重新加载获取材料快捷键并重新注册"""
+        self._load_get_material_hotkey()
         self.start_global_hotkey_listener()
 
     def cleanup(self):
@@ -126,5 +136,4 @@ class HotkeyManager:
     def get_status_text(self):
         """获取快捷键状态文本"""
         return (f"启动:{self.global_start_hotkey} "
-                f"停止:{self.global_stop_hotkey} "
-                f"取材:{self.get_material_hotkey}")
+                f"停止:{self.global_stop_hotkey}")

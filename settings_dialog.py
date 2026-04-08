@@ -23,7 +23,6 @@ TEMPLATE_ITEMS = [
     ('execute_button_image', '执行按钮', '制造界面的「执行」按钮'),
     ('completion_image', '制造完成', '制造结束后出现的按钮'),
     ('organize_button_image', '整理背包', '背包界面的「整理」按钮'),
-    ('get_material_image', '获取材料', '获取材料时需要点击的目标图片'),
 ]
 
 
@@ -35,7 +34,6 @@ def load_settings():
         'execute_button_image': '',
         'completion_image': '',
         'organize_button_image': '',
-        'get_material_image': '',
         'window_title_keyword': 'QI魔力',
         'cell_width': 40,
         'cell_height': 40,
