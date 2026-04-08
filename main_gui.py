@@ -19,8 +19,9 @@ from digit_recognizer import DigitRecognizer
 from craft_engine import CraftEngine
 from hotkey_manager import HotkeyManager
 from hotkey_dialog import HotkeySettingsDialog
-from tool_dialog import AutoEncounterDialog, LoopHealingDialog, load_tool_config
-from tool_scripts import AutoEncounterEngine, LoopHealingEngine
+from tool_dialog import (AutoEncounterDialog, LoopHealingDialog,
+                         GetMaterialDialog, load_tool_config)
+from tool_scripts import AutoEncounterEngine, LoopHealingEngine, GetMaterialEngine
 from screenshot_util import take_screenshot
 
 
@@ -35,6 +36,11 @@ TOOL_INFO = {
         'name': '循环医疗',
         'desc': '循环查找并点击治疗技能，然后按偏移列表依次点击队员位置进行治疗。\n'
                 '流程: 点击技能 → 定位队员 → 依次点击偏移位置 → 循环',
+    },
+    'get_material': {
+        'name': '获取材料',
+        'desc': '按快捷键执行一次获取材料操作（全局，可与其他功能同时使用）。\n'
+                '流程: 双击当前位置 → 查找并点击材料图片 → Ctrl+E 打开背包',
     },
 }
 
@@ -68,6 +74,8 @@ class CraftAssistantGUI:
             self.window_manager, self.backpack_reader, self._log_message
         )
         self.hotkey_manager = HotkeyManager(self)
+        self.get_material_engine = GetMaterialEngine(
+            self.window_manager, self._log_message)
 
         # 创建界面
         self._create_widgets()
@@ -126,6 +134,8 @@ class CraftAssistantGUI:
                          values=('auto_encounter',), tags=('tool',))
         self.tree.insert(self._tool_node, 'end', text='循环医疗',
                          values=('loop_healing',), tags=('tool',))
+        self.tree.insert(self._tool_node, 'end', text='获取材料',
+                         values=('get_material',), tags=('tool',))
 
         # 分类样式
         self.tree.tag_configure('category', font=('', 10, 'bold'))
@@ -290,7 +300,10 @@ class CraftAssistantGUI:
         elif self._selected_type == 'tool':
             self.edit_btn.config(text="配置", state=tk.NORMAL)
             self.delete_btn.config(state=tk.DISABLED)
-            self.start_btn.config(text="开始执行")
+            if self._selected_tool_id == 'get_material':
+                self.start_btn.config(text="执行一次")
+            else:
+                self.start_btn.config(text="开始执行")
             self.info_frame.config(text="当前工具")
         else:
             self.edit_btn.config(text="编辑", state=tk.DISABLED)
@@ -332,9 +345,6 @@ class CraftAssistantGUI:
             lines.append(
                 f"  材料{i+1}: {mat['image_file']} x{mat['quantity']}")
         lines.append(f"等待时间: {recipe.get('wait_time', 3.0)} 秒")
-        org = recipe.get('organize_interval', 0)
-        if org > 0:
-            lines.append(f"整理频率: 每 {org} 次")
         self.info_label.config(text='\n'.join(lines), foreground='black')
 
     def _show_tool_info(self, tool_id):
@@ -374,6 +384,16 @@ class CraftAssistantGUI:
             lines.append(f"执行步骤: {len(steps)} 个 ({summary})")
             if not (skill_ok and member_ok and steps):
                 lines.append("\n(需先点击「配置」截取图片并添加步骤)")
+
+        elif tool_id == 'get_material':
+            cfg = config.get('get_material', {})
+            mat = cfg.get('material_image', '')
+            mat_ok = bool(mat) and os.path.exists(mat)
+            hotkey = self.hotkey_manager.get_material_hotkey
+            lines.append(f"\n材料图片: {'已设置' if mat_ok else '未设置'}")
+            lines.append(f"触发快捷键: {hotkey}")
+            if not mat_ok:
+                lines.append("\n(需先点击「配置」截取材料图片)")
 
         self.info_label.config(text='\n'.join(lines), foreground='black')
 
@@ -502,14 +522,24 @@ class CraftAssistantGUI:
             dialog = LoopHealingDialog(self.root, self._screenshot_region)
             if dialog.result:
                 self._show_tool_info('loop_healing')
+        elif self._selected_tool_id == 'get_material':
+            dialog = GetMaterialDialog(self.root, self._screenshot_region)
+            if dialog.result:
+                self._show_tool_info('get_material')
 
     def _start_selected_tool(self):
         """启动当前选中的工具"""
-        if self.is_running or self._active_tool_engine:
-            messagebox.showwarning("提示", "请先停止当前任务")
-            return
         if not self.window_manager.is_window_valid():
             messagebox.showwarning("提示", "请先绑定游戏窗口")
+            return
+
+        # 获取材料是全局功能，不受其他任务影响
+        if self._selected_tool_id == 'get_material':
+            self._trigger_get_material()
+            return
+
+        if self.is_running or self._active_tool_engine:
+            messagebox.showwarning("提示", "请先停止当前任务")
             return
 
         if self._selected_tool_id == 'auto_encounter':
@@ -580,6 +610,15 @@ class CraftAssistantGUI:
             self._active_tool_engine = None
             self._tool_stop_callback = None
             self._exit_mini_mode()
+
+    def _trigger_get_material(self):
+        """快捷键触发获取材料（全局，不受其他功能运行状态影响）"""
+        config = load_tool_config().get('get_material', {})
+        mat_img = config.get('material_image', '')
+        if not mat_img or not os.path.exists(mat_img):
+            self._log_message("获取材料: 未配置材料图片，请先配置")
+            return
+        self.get_material_engine.execute(mat_img)
 
     # ── 迷你模式 ──
 

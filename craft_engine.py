@@ -74,8 +74,6 @@ class CraftEngine:
             materials = recipe['materials']
             craft_time = recipe.get('craft_time', 10.0)
             wait_time = recipe.get('wait_time', 3.0)
-            organize_interval = recipe.get('organize_interval', 0)
-
             execute_button_path = settings.get('execute_button_image')
             completion_image_path = settings.get('completion_image')
             click_pre_delay = settings.get('click_pre_delay', 200) / 1000.0
@@ -235,22 +233,28 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 10. 整理背包
-                if organize_interval > 0 and self.craft_count % organize_interval == 0:
-                    if organize_button_path:
-                        self._log("整理背包: 打开背包...")
-                        pyautogui.hotkey('ctrl', 'e')
-                        time.sleep(0.5)
-                        self._click_template(organize_button_path, window_rect, pre_delay=0.5, long_press=True)
-                        time.sleep(1.0)
-                        self._log("整理背包: 关闭背包...")
-                        pyautogui.hotkey('ctrl', 'e')
-                        time.sleep(0.5)
-                        pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
-                        time.sleep(0.5)
-                        # 整理后物品位置会变，跳回循环顶部重新扫描
-                        self._log("整理完成，重新扫描背包...")
-                        continue
+                # 10. 检查背包是否还有空格子，没有则整理
+                if organize_button_path and not self._check_stop():
+                    grid_chk, _ = self.backpack_reader.locate_grid(window_rect)
+                    if grid_chk:
+                        chk_slots = self.backpack_reader.scan_backpack(grid_chk)
+                        has_empty = any(s.is_empty for s in chk_slots)
+                        if not has_empty:
+                            self._log("背包无空格子，整理背包...")
+                            pyautogui.hotkey('ctrl', 'e')
+                            time.sleep(0.5)
+                            self._click_template(
+                                organize_button_path, window_rect,
+                                pre_delay=0.5, long_press=True)
+                            time.sleep(1.0)
+                            self._log("整理背包: 关闭背包...")
+                            pyautogui.hotkey('ctrl', 'e')
+                            time.sleep(0.5)
+                            pyautogui.moveTo(
+                                window_rect[0] + 50, window_rect[1] + 50)
+                            time.sleep(0.5)
+                            self._log("整理完成，重新扫描背包...")
+                            continue
 
                 # 短暂间隔再开始下一轮
                 time.sleep(0.5)

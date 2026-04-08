@@ -78,15 +78,6 @@ class RecipeDialog:
                     textvariable=self.wait_var, width=8).pack(side=tk.LEFT, padx=10)
         ttk.Label(wait_row, text="秒 (制造完成后等待)").pack(side=tk.LEFT)
 
-        # 整理频率
-        org_row = ttk.Frame(main_frame)
-        org_row.pack(fill=tk.X, pady=5)
-        ttk.Label(org_row, text="整理背包:").pack(side=tk.LEFT)
-        self.org_var = tk.IntVar(value=5)
-        ttk.Spinbox(org_row, from_=0, to=100,
-                    textvariable=self.org_var, width=8).pack(side=tk.LEFT, padx=10)
-        ttk.Label(org_row, text="次制造后整理一次 (0=不整理)").pack(side=tk.LEFT)
-
         # 材料列表
         mat_label = ttk.LabelFrame(main_frame, text="材料列表", padding=10)
         mat_label.pack(fill=tk.BOTH, expand=True, pady=10)
@@ -191,7 +182,6 @@ class RecipeDialog:
         self.name_var.set(recipe['name'])
         self.craft_time_var.set(recipe.get('craft_time', 10.0))
         self.wait_var.set(recipe.get('wait_time', 3.0))
-        self.org_var.set(recipe.get('organize_interval', 5))
 
         recipe_dir = self.recipe_manager.get_recipe_dir(recipe['name'])
         for mat in recipe.get('materials', []):
@@ -240,7 +230,6 @@ class RecipeDialog:
             'name': name,
             'craft_time': self.craft_time_var.get(),
             'wait_time': self.wait_var.get(),
-            'organize_interval': self.org_var.get(),
             'materials': valid_materials,
         }
 

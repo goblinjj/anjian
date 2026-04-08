@@ -3,7 +3,7 @@
 
 """
 工具脚本引擎
-包含自动遇敌和循环医疗两个工具
+包含自动遇敌、循环医疗和获取材料三个工具
 """
 
 import time
@@ -268,3 +268,98 @@ class LoopHealingEngine:
         finally:
             self.is_running = False
             self._log("循环医疗已停止")
+
+
+class GetMaterialEngine:
+    """获取材料引擎
+
+    每次调用 execute() 执行一次:
+    1. 在当前鼠标位置双击
+    2. 查找配置的图片并点击
+    3. 按 Ctrl+E 打开背包
+    """
+
+    def __init__(self, window_manager, status_callback=None):
+        self.window_manager = window_manager
+        self.status_callback = status_callback
+        self._busy = False
+
+    def _log(self, message):
+        if self.status_callback:
+            self.status_callback(message)
+
+    def _find_template(self, template_path, window_rect, threshold=0.7):
+        """在窗口中查找模板图片"""
+        screenshot = take_screenshot(region=window_rect)
+        screen_np = np.array(screenshot)
+        screenshot.close()
+        screen_bgr = cv2.cvtColor(screen_np, cv2.COLOR_RGB2BGR)
+
+        pil_tmpl = Image.open(template_path)
+        tmpl = np.array(pil_tmpl)
+        pil_tmpl.close()
+        if len(tmpl.shape) == 3:
+            tmpl = cv2.cvtColor(tmpl, cv2.COLOR_RGB2BGR)
+
+        result = cv2.matchTemplate(screen_bgr, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+        if max_val >= threshold:
+            th, tw = tmpl.shape[:2]
+            click_x = window_rect[0] + max_loc[0] + tw // 2
+            click_y = window_rect[1] + max_loc[1] + th // 2
+            return (click_x, click_y, max_val)
+        return None
+
+    def execute(self, material_image):
+        """执行一次获取材料流程（在后台线程中运行）"""
+        if self._busy:
+            self._log("获取材料: 正在执行中，请稍候")
+            return
+        self._busy = True
+        threading.Thread(
+            target=self._run, args=(material_image,), daemon=True
+        ).start()
+
+    def _run(self, material_image):
+        try:
+            if not self.window_manager.is_window_valid():
+                self._log("获取材料: 未绑定游戏窗口")
+                return
+
+            self._log("获取材料: 开始执行")
+
+            # 1. 当前鼠标位置双击
+            x, y = pyautogui.position()
+            pyautogui.doubleClick(x, y)
+            self._log(f"  双击当前位置 ({x}, {y})")
+            time.sleep(0.2)
+
+            # 2. 查找图片并点击
+            rect = self.window_manager.get_window_rect()
+            if not rect:
+                self._log("  错误: 无法获取窗口坐标")
+                return
+
+            pos = self._find_template(material_image, rect)
+            if not pos:
+                self._log("  未找到材料图片")
+                return
+
+            mx, my, _ = pos
+            pyautogui.moveTo(mx, my)
+            time.sleep(0.2)
+            pyautogui.click()
+            self._log(f"  点击材料图片 ({mx}, {my})")
+            time.sleep(0.2)
+
+            # 3. Ctrl+E 打开背包
+            pyautogui.hotkey('ctrl', 'e')
+            self._log("  按下 Ctrl+E 打开背包")
+
+            self._log("获取材料: 执行完成")
+
+        except Exception as e:
+            self._log(f"获取材料出错: {str(e)}")
+        finally:
+            self._busy = False
