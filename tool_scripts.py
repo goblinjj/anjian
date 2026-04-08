@@ -329,20 +329,21 @@ class GetMaterialEngine:
 
             self._log("获取材料: 开始执行")
 
-            # 1. 当前鼠标位置双击
-            x, y = pyautogui.position()
-            pyautogui.doubleClick(x, y)
-            self._log(f"  双击当前位置 ({x}, {y})")
-
-            # 2. 等待 300ms
-            time.sleep(0.3)
-
-            # 3. 循环查找材料图片，找到后点击
             rect = self.window_manager.get_window_rect()
             if not rect:
                 self._log("  错误: 无法获取窗口坐标")
                 return
 
+            # 1. 当前鼠标位置双击，然后移动鼠标到窗口相对(50,50)
+            x, y = pyautogui.position()
+            pyautogui.doubleClick(x, y)
+            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
+            self._log(f"  双击当前位置 ({x}, {y})，鼠标移开")
+
+            # 2. 等待 300ms
+            time.sleep(0.3)
+
+            # 3. 循环查找材料图片，找到后点击
             pos = None
             for attempt in range(30):  # 最多重试30次(约6秒)
                 pos = self._find_template(material_image, rect)
