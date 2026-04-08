@@ -249,6 +249,7 @@ class SettingsDialog:
         if success and os.path.exists(save_path):
             self.settings[key] = save_path
             self.template_status[key].config(text="已设置 ✓")
+            save_settings(self.settings)
 
     def _capture_digits(self):
         """逐个截取0-9数字模板"""
