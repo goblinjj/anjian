@@ -337,6 +337,7 @@ class GetMaterialEngine:
             # 1. 当前鼠标位置双击，然后移动鼠标到窗口相对(50,50)
             x, y = pyautogui.position()
             pyautogui.doubleClick(x, y)
+            time.sleep(0.2)
             pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
             self._log(f"  双击当前位置 ({x}, {y})，鼠标移开")
 
