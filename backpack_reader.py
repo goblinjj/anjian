@@ -302,8 +302,12 @@ class BackpackReader:
         return slots
 
     def match_item(self, slots, material_image_path, required_quantity,
-                   confidence=0.6):
-        """在背包中查找匹配的物品格子"""
+                   confidence=0.8, exclude_slots=None):
+        """在背包中查找匹配的物品格子
+
+        Args:
+            exclude_slots: 已使用的格子集合 {(grid_x, grid_y), ...}，避免同格子重复使用
+        """
         pil_tmpl = Image.open(material_image_path)
         tmpl = np.array(pil_tmpl)
         pil_tmpl.close()
@@ -312,9 +316,12 @@ class BackpackReader:
 
         candidates = []
         icon_matched_but_insufficient = []
+        exclude = exclude_slots or set()
 
         for slot in slots:
             if slot.is_empty:
+                continue
+            if (slot.grid_x, slot.grid_y) in exclude:
                 continue
 
             icon = slot.icon_image

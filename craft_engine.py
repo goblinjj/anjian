@@ -137,8 +137,9 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
-                # 6. 匹配每种材料
+                # 6. 匹配每种材料（同一格子不可重复使用）
                 matched_slots = []
+                used_positions = set()
                 all_matched = True
 
                 for i, mat in enumerate(materials):
@@ -146,7 +147,8 @@ class CraftEngine:
                     required_qty = mat['quantity']
 
                     slot, info = self.backpack_reader.match_item(
-                        slots, mat_image_path, required_qty
+                        slots, mat_image_path, required_qty,
+                        exclude_slots=used_positions
                     )
 
                     if slot is None:
@@ -156,6 +158,7 @@ class CraftEngine:
                         break
 
                     matched_slots.append(slot)
+                    used_positions.add((slot.grid_x, slot.grid_y))
                     self._log(f"材料{i+1}: {info}")
 
                 if not all_matched:
@@ -176,17 +179,20 @@ class CraftEngine:
                         break
                     slots2 = self.backpack_reader.scan_backpack(grid2)
                     matched_slots = []
+                    used_positions = set()
                     all_matched2 = True
                     for i, mat in enumerate(materials):
                         mat_image_path = os.path.join(
                             recipe_dir, mat['image_file'])
                         slot, info = self.backpack_reader.match_item(
-                            slots2, mat_image_path, mat['quantity'])
+                            slots2, mat_image_path, mat['quantity'],
+                            exclude_slots=used_positions)
                         if slot is None:
                             self._log(f"材料{i+1}: {info}")
                             all_matched2 = False
                             break
                         matched_slots.append(slot)
+                        used_positions.add((slot.grid_x, slot.grid_y))
                         self._log(f"材料{i+1}: {info}")
 
                     if not all_matched2:
