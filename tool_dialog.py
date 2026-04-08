@@ -30,9 +30,7 @@ def load_tool_config():
             'member_image': '',
             'steps': [],
         },
-        'get_material': {
-            'material_image': '',
-        }
+        'get_material': {}
     }
     if os.path.exists(TOOL_CONFIG_FILE):
         try:
@@ -576,85 +574,4 @@ class LoopHealingDialog:
         save_tool_config(config)
 
         self.result = config['loop_healing']
-        self.dialog.destroy()
-
-
-class GetMaterialDialog:
-    """获取材料配置对话框
-
-    result: {'material_image': str} 或 None（取消）
-    """
-
-    def __init__(self, parent, screenshot_callback):
-        self.result = None
-        self.screenshot_callback = screenshot_callback
-        self.config = load_tool_config()['get_material']
-
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("获取材料 - 配置")
-        self.dialog.geometry("420x200")
-        self.dialog.resizable(False, False)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-
-        self._create_widgets()
-        self.dialog.wait_window()
-
-    def _create_widgets(self):
-        main = ttk.Frame(self.dialog, padding=15)
-        main.pack(fill=tk.BOTH, expand=True)
-
-        desc = ttk.LabelFrame(main, text="说明", padding=10)
-        desc.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(desc, wraplength=370,
-                  text="按快捷键执行一次获取材料:\n"
-                       "1. 双击当前鼠标位置\n"
-                       "2. 查找并点击下方配置的图片\n"
-                       "3. 按 Ctrl+E 打开背包"
-                  ).pack(anchor=tk.W)
-
-        img_frame = ttk.LabelFrame(main, text="图片模板", padding=10)
-        img_frame.pack(fill=tk.X, pady=(0, 10))
-
-        row = ttk.Frame(img_frame)
-        row.pack(fill=tk.X)
-        ttk.Label(row, text="材料图片:", width=10).pack(side=tk.LEFT)
-        mat_path = self.config.get('material_image', '')
-        has_img = bool(mat_path) and os.path.exists(mat_path)
-        self.img_status = ttk.Label(
-            row, text="已设置 ✓" if has_img else "未设置 ✗", width=10)
-        self.img_status.pack(side=tk.LEFT, padx=5)
-        ttk.Button(row, text="截图", width=6,
-                   command=self._capture).pack(side=tk.LEFT, padx=5)
-
-        btn_frame = ttk.Frame(main)
-        btn_frame.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(btn_frame, text="确定",
-                   command=self._save).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="取消",
-                   command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
-    def _capture(self):
-        os.makedirs(TOOLS_DIR, exist_ok=True)
-        save_path = os.path.join(TOOLS_DIR, 'get_material.png')
-        self.dialog.grab_release()
-        self.dialog.withdraw()
-        success = self.screenshot_callback(save_path)
-        self.dialog.deiconify()
-        self.dialog.grab_set()
-        if success and os.path.exists(save_path):
-            self.config['material_image'] = save_path
-            self.img_status.config(text="已设置 ✓")
-
-    def _save(self):
-        mat_path = self.config.get('material_image', '')
-        if not mat_path or not os.path.exists(mat_path):
-            messagebox.showwarning(
-                "提示", "请先截取材料图片", parent=self.dialog)
-            return
-
-        config = load_tool_config()
-        config['get_material'] = {'material_image': mat_path}
-        save_tool_config(config)
-        self.result = config['get_material']
         self.dialog.destroy()
