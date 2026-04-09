@@ -301,12 +301,25 @@ class BackpackReader:
                   f"{count_no_qty}个数量未识别, {count_empty}个空格子")
         return slots
 
+    def _load_competing_templates(self, paths):
+        """加载竞争材料模板列表"""
+        templates = []
+        for path in paths:
+            if not path or not os.path.exists(path):
+                continue
+            tmpl = self._load_template(path)
+            templates.append(tmpl)
+        return templates
+
     def match_item(self, slots, material_image_path, required_quantity,
-                   confidence=0.8, exclude_slots=None):
+                   confidence=0.8, exclude_slots=None,
+                   competing_image_paths=None):
         """在背包中查找匹配的物品格子
 
         Args:
             exclude_slots: 已使用的格子集合 {(grid_x, grid_y), ...}，避免同格子重复使用
+            competing_image_paths: 配方中其他材料的图片路径列表，用于竞争匹配
+                当存在竞争模板时，只有目标材料的置信度最高才算匹配成功
         """
         pil_tmpl = Image.open(material_image_path)
         tmpl = np.array(pil_tmpl)
@@ -314,8 +327,15 @@ class BackpackReader:
         if len(tmpl.shape) == 3:
             tmpl = cv2.cvtColor(tmpl, cv2.COLOR_RGB2BGR)
 
+        # 加载竞争模板
+        competing_tmpls = []
+        if competing_image_paths:
+            competing_tmpls = self._load_competing_templates(
+                competing_image_paths)
+
         candidates = []
         icon_matched_but_insufficient = []
+        rejected_by_competing = []
         exclude = exclude_slots or set()
 
         for slot in slots:
@@ -332,6 +352,27 @@ class BackpackReader:
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             if max_val >= confidence:
+                # 竞争匹配：检查是否有其他材料的置信度更高
+                if competing_tmpls:
+                    best_competing = 0.0
+                    for c_tmpl in competing_tmpls:
+                        if (icon.shape[0] < c_tmpl.shape[0] or
+                                icon.shape[1] < c_tmpl.shape[1]):
+                            continue
+                        c_result = cv2.matchTemplate(
+                            icon, c_tmpl, cv2.TM_CCOEFF_NORMED)
+                        _, c_val, _, _ = cv2.minMaxLoc(c_result)
+                        if c_val > best_competing:
+                            best_competing = c_val
+
+                    if best_competing > max_val:
+                        rejected_by_competing.append(
+                            (slot, max_val, best_competing))
+                        logger.info(
+                            f"  格子({slot.grid_x},{slot.grid_y}): "
+                            f"目标{max_val:.3f} < 竞争{best_competing:.3f}，跳过")
+                        continue
+
                 if required_quantity == 0:
                     # 数量为0：只匹配图标，不检查数量
                     candidates.append((slot, max_val))
@@ -357,5 +398,12 @@ class BackpackReader:
                 for s, _, reason in icon_matched_but_insufficient
             )
             return (None, f"找到图标但数量不足: {details}")
+
+        if rejected_by_competing:
+            details = "; ".join(
+                f"({s.grid_x},{s.grid_y}):目标{tv:.2f}/竞争{cv:.2f}"
+                for s, tv, cv in rejected_by_competing
+            )
+            return (None, f"找到相似图标但被竞争材料排除: {details}")
 
         return (None, "未找到匹配的图标")

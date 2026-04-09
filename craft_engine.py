@@ -142,13 +142,25 @@ class CraftEngine:
                 used_positions = set()
                 all_matched = True
 
+                # 构建所有材料图片路径列表，用于竞争匹配
+                all_mat_paths = [
+                    os.path.join(recipe_dir, m['image_file'])
+                    for m in materials
+                ]
+
                 for i, mat in enumerate(materials):
                     mat_image_path = os.path.join(recipe_dir, mat['image_file'])
                     required_qty = mat['quantity']
 
+                    # 竞争路径：排除当前材料自身
+                    competing_paths = [
+                        p for j, p in enumerate(all_mat_paths) if j != i
+                    ]
+
                     slot, info = self.backpack_reader.match_item(
                         slots, mat_image_path, required_qty,
-                        exclude_slots=used_positions
+                        exclude_slots=used_positions,
+                        competing_image_paths=competing_paths
                     )
 
                     if slot is None:
@@ -184,9 +196,13 @@ class CraftEngine:
                     for i, mat in enumerate(materials):
                         mat_image_path = os.path.join(
                             recipe_dir, mat['image_file'])
+                        competing_paths = [
+                            p for j, p in enumerate(all_mat_paths) if j != i
+                        ]
                         slot, info = self.backpack_reader.match_item(
                             slots2, mat_image_path, mat['quantity'],
-                            exclude_slots=used_positions)
+                            exclude_slots=used_positions,
+                            competing_image_paths=competing_paths)
                         if slot is None:
                             self._log(f"材料{i+1}: {info}")
                             all_matched2 = False
