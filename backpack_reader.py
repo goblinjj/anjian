@@ -365,12 +365,15 @@ class BackpackReader:
                         if c_val > best_competing:
                             best_competing = c_val
 
-                    if best_competing > max_val:
+                    # 竞争材料必须显著高于目标才排除（margin=0.05）
+                    compete_margin = 0.05
+                    if best_competing > max_val + compete_margin:
                         rejected_by_competing.append(
                             (slot, max_val, best_competing))
                         logger.info(
                             f"  格子({slot.grid_x},{slot.grid_y}): "
-                            f"目标{max_val:.3f} < 竞争{best_competing:.3f}，跳过")
+                            f"目标{max_val:.3f} < 竞争{best_competing:.3f}"
+                            f"(差{best_competing - max_val:.3f}>{compete_margin})，跳过")
                         continue
 
                 if required_quantity == 0:
