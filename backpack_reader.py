@@ -311,6 +311,20 @@ class BackpackReader:
             templates.append(tmpl)
         return templates
 
+    def _color_distance(self, icon, tmpl):
+        """计算模板在格子中最佳匹配位置的颜色均值距离
+
+        在匹配位置裁剪出ROI，比较ROI与模板的BGR均值欧氏距离。
+        距离越小说明颜色越接近，用于区分形状相似但颜色不同的材料。
+        """
+        result = cv2.matchTemplate(icon, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, _, _, max_loc = cv2.minMaxLoc(result)
+        th, tw = tmpl.shape[:2]
+        roi = icon[max_loc[1]:max_loc[1]+th, max_loc[0]:max_loc[0]+tw]
+        mean_roi = np.mean(roi.astype(float), axis=(0, 1))
+        mean_tmpl = np.mean(tmpl.astype(float), axis=(0, 1))
+        return float(np.linalg.norm(mean_roi - mean_tmpl))
+
     def match_item(self, slots, material_image_path, required_quantity,
                    confidence=0.8, exclude_slots=None,
                    competing_image_paths=None):
@@ -319,7 +333,7 @@ class BackpackReader:
         Args:
             exclude_slots: 已使用的格子集合 {(grid_x, grid_y), ...}，避免同格子重复使用
             competing_image_paths: 配方中其他材料的图片路径列表，用于竞争匹配
-                当存在竞争模板时，只有目标材料的置信度最高才算匹配成功
+                通过比较颜色均值距离判断格子更可能属于哪种材料
         """
         pil_tmpl = Image.open(material_image_path)
         tmpl = np.array(pil_tmpl)
@@ -352,28 +366,26 @@ class BackpackReader:
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
             if max_val >= confidence:
-                # 竞争匹配：检查是否有其他材料的置信度更高
+                # 竞争匹配：用颜色均值距离判断格子更像哪种材料
                 if competing_tmpls:
-                    best_competing = 0.0
+                    target_cd = self._color_distance(icon, tmpl)
+                    best_competing_cd = float('inf')
                     for c_tmpl in competing_tmpls:
                         if (icon.shape[0] < c_tmpl.shape[0] or
                                 icon.shape[1] < c_tmpl.shape[1]):
                             continue
-                        c_result = cv2.matchTemplate(
-                            icon, c_tmpl, cv2.TM_CCOEFF_NORMED)
-                        _, c_val, _, _ = cv2.minMaxLoc(c_result)
-                        if c_val > best_competing:
-                            best_competing = c_val
+                        c_cd = self._color_distance(icon, c_tmpl)
+                        if c_cd < best_competing_cd:
+                            best_competing_cd = c_cd
 
-                    # 竞争材料必须显著高于目标才排除（margin=0.05）
-                    compete_margin = 0.05
-                    if best_competing > max_val + compete_margin:
+                    # 竞争材料颜色更接近 → 该格子更可能是竞争材料
+                    if best_competing_cd < target_cd:
                         rejected_by_competing.append(
-                            (slot, max_val, best_competing))
+                            (slot, max_val, target_cd, best_competing_cd))
                         logger.info(
                             f"  格子({slot.grid_x},{slot.grid_y}): "
-                            f"目标{max_val:.3f} < 竞争{best_competing:.3f}"
-                            f"(差{best_competing - max_val:.3f}>{compete_margin})，跳过")
+                            f"目标颜色距离{target_cd:.1f} > "
+                            f"竞争颜色距离{best_competing_cd:.1f}，跳过")
                         continue
 
                 if required_quantity == 0:
@@ -404,8 +416,8 @@ class BackpackReader:
 
         if rejected_by_competing:
             details = "; ".join(
-                f"({s.grid_x},{s.grid_y}):目标{tv:.2f}/竞争{cv:.2f}"
-                for s, tv, cv in rejected_by_competing
+                f"({s.grid_x},{s.grid_y}):目标颜色距离{tcd:.1f}/竞争{ccd:.1f}"
+                for s, _, tcd, ccd in rejected_by_competing
             )
             return (None, f"找到相似图标但被竞争材料排除: {details}")
 
