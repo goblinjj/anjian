@@ -329,6 +329,9 @@ class GetMaterialEngine:
 
             self._log("获取材料: 开始执行")
 
+            # 记录当前鼠标位置，执行完毕后还原
+            saved_x, saved_y = pyautogui.position()
+
             rect = self.window_manager.get_window_rect()
             if not rect:
                 self._log("  错误: 无法获取窗口坐标")
@@ -373,4 +376,6 @@ class GetMaterialEngine:
         except Exception as e:
             self._log(f"获取材料出错: {str(e)}")
         finally:
+            pyautogui.moveTo(saved_x, saved_y)
+            self._log(f"  鼠标还原到 ({saved_x}, {saved_y})")
             self._busy = False
