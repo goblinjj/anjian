@@ -116,8 +116,10 @@ class HotkeyManager:
         self.gui.root.after(0, self.gui.start_selected)
 
     def _on_stop_hotkey(self):
-        """快捷键停止执行（制造或工具脚本）"""
+        """快捷键停止执行（制造或工具脚本或获取材料）"""
         self._clear_hotkey_char()
+        # 获取材料是独立运行的，始终尝试停止
+        self.gui.get_material_engine.stop()
         if self.gui._tool_stop_callback:
             self.gui.root.after(0, self.gui._tool_stop_callback)
         elif self.gui.is_running:

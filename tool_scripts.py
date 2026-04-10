@@ -283,6 +283,7 @@ class GetMaterialEngine:
         self.window_manager = window_manager
         self.status_callback = status_callback
         self._busy = False
+        self.should_stop = False
 
     def _log(self, message):
         if self.status_callback:
@@ -311,11 +312,15 @@ class GetMaterialEngine:
             return (click_x, click_y, max_val)
         return None
 
+    def stop(self):
+        self.should_stop = True
+
     def execute(self, material_image):
         """执行一次获取材料流程（在后台线程中运行）"""
         if self._busy:
             self._log("获取材料: 正在执行中，请稍候")
             return
+        self.should_stop = False
         self._busy = True
         threading.Thread(
             target=self._run, args=(material_image,), daemon=True
@@ -341,15 +346,24 @@ class GetMaterialEngine:
             x, y = pyautogui.position()
             pyautogui.doubleClick(x, y)
             time.sleep(0.2)
+            if self.should_stop:
+                self._log("获取材料: 已取消")
+                return
             pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
             self._log(f"  双击当前位置 ({x}, {y})，鼠标移开")
 
             # 2. 等待 300ms
             time.sleep(0.3)
+            if self.should_stop:
+                self._log("获取材料: 已取消")
+                return
 
             # 3. 循环查找材料图片，找到后点击
             pos = None
             for attempt in range(30):  # 最多重试30次(约6秒)
+                if self.should_stop:
+                    self._log("获取材料: 已取消")
+                    return
                 pos = self._find_template(material_image, rect)
                 if pos:
                     break
@@ -359,6 +373,10 @@ class GetMaterialEngine:
                 self._log("  未找到材料图片")
                 return
 
+            if self.should_stop:
+                self._log("获取材料: 已取消")
+                return
+
             mx, my, _ = pos
             pyautogui.moveTo(mx, my)
             pyautogui.click()
@@ -366,6 +384,9 @@ class GetMaterialEngine:
 
             # 4. 等待 300ms
             time.sleep(0.3)
+            if self.should_stop:
+                self._log("获取材料: 已取消")
+                return
 
             # 5. Ctrl+E 打开背包
             pyautogui.hotkey('ctrl', 'e')
