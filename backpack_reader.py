@@ -119,6 +119,7 @@ class BackpackReader:
         # 3. 格子大小：使用设定值
         cell_w = self.settings.get('cell_width', 40)
         cell_h = self.settings.get('cell_height', 40)
+        logger.debug(f"格子大小: {cell_w}x{cell_h} (来自设置)")
 
         grid = GridInfo(origin_x, origin_y, cell_w, cell_h)
         return (grid, f"网格定位: 置信度{conf:.2f}, {grid}")
