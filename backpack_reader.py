@@ -116,17 +116,9 @@ class BackpackReader:
         origin_x = win_left + title_loc[0] + offset_x
         origin_y = win_top + title_loc[1] + title_h + offset_y
 
-        # 3. 格子大小：优先从空格子模板获取
+        # 3. 格子大小：使用设定值
         cell_w = self.settings.get('cell_width', 40)
         cell_h = self.settings.get('cell_height', 40)
-
-        empty_path = self.settings.get('empty_cell_image')
-        if empty_path and os.path.exists(empty_path):
-            empty_tmpl = self._load_template(empty_path)
-            eh, ew = empty_tmpl.shape[:2]
-            if ew >= 15 and eh >= 15:
-                cell_w = ew
-                cell_h = eh
 
         grid = GridInfo(origin_x, origin_y, cell_w, cell_h)
         return (grid, f"网格定位: 置信度{conf:.2f}, {grid}")
