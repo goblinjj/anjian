@@ -74,8 +74,7 @@ class CraftAssistantGUI:
             self.window_manager, self.backpack_reader, self._log_message
         )
         self.hotkey_manager = HotkeyManager(self)
-        self.get_material_engine = GetMaterialEngine(
-            self.window_manager, self._log_message)
+        self.get_material_engine = GetMaterialEngine(self.window_manager)
 
         # 创建界面
         self._create_widgets()
@@ -210,40 +209,28 @@ class CraftAssistantGUI:
         self.hotkey_label.pack(side=tk.RIGHT)
 
         # ── 迷你模式区（初始隐藏）──
-        self._mini_frame = ttk.Frame(self.root, padding=10)
+        # 用 tk.Frame + 边框，无系统标题栏时便于辨认窗口边界
+        self._mini_frame = tk.Frame(
+            self.root, bg='#f0f0f0', relief='solid', borderwidth=1)
 
-        self._mini_task_label = ttk.Label(
-            self._mini_frame, text="", font=('', 11, 'bold'))
-        self._mini_task_label.pack(anchor=tk.W, pady=(0, 5))
+        mini_inner = tk.Frame(self._mini_frame, bg='#f0f0f0', padx=10, pady=8)
+        mini_inner.pack(fill=tk.BOTH, expand=True)
 
-        self._mini_step_label = ttk.Label(
-            self._mini_frame, text="准备中...", foreground='gray',
-            wraplength=350)
-        self._mini_step_label.pack(anchor=tk.W, pady=(0, 5))
+        self._mini_task_label = tk.Label(
+            mini_inner, text="", font=('', 11, 'bold'), bg='#f0f0f0')
+        self._mini_task_label.pack(pady=(0, 6))
 
-        self._mini_stats_label = ttk.Label(self._mini_frame, text="")
-        self._mini_stats_label.pack(anchor=tk.W, pady=(0, 8))
+        self._mini_toggle_btn = ttk.Button(
+            mini_inner, text="开始", width=10, command=self._mini_toggle)
+        self._mini_toggle_btn.pack()
 
-        mini_btn_frame = ttk.Frame(self._mini_frame)
-        mini_btn_frame.pack(fill=tk.X)
+        # 拖动 + 双击还原：绑定到按钮以外的所有控件
+        for w in (self._mini_frame, mini_inner, self._mini_task_label):
+            w.bind('<ButtonPress-1>', self._mini_drag_start)
+            w.bind('<B1-Motion>', self._mini_drag_motion)
+            w.bind('<Double-Button-1>', lambda e: self._exit_mini_mode())
 
-        self._mini_start_btn = ttk.Button(
-            mini_btn_frame, text="开始", command=self._mini_start)
-        self._mini_start_btn.pack(side=tk.LEFT, padx=(0, 5))
-
-        self._mini_stop_btn = ttk.Button(
-            mini_btn_frame, text="停止", command=self._mini_stop)
-        self._mini_stop_btn.pack(side=tk.LEFT)
-
-        self._mini_restore_btn = ttk.Button(
-            mini_btn_frame, text="还原", command=self._exit_mini_mode)
-        self._mini_restore_btn.pack(side=tk.LEFT, padx=(5, 0))
-
-        self._mini_hotkey_label = ttk.Label(
-            mini_btn_frame,
-            text=f"停止热键: {self.hotkey_manager.global_stop_hotkey}",
-            foreground='gray')
-        self._mini_hotkey_label.pack(side=tk.RIGHT)
+        self._mini_drag_offset = (0, 0)
 
     # ── 分类列表 ──
 
@@ -487,8 +474,6 @@ class CraftAssistantGUI:
         task_name = f"制造: {self.selected_recipe['name']}"
         if self._in_mini_mode:
             self._mini_task_label.config(text=task_name)
-            self._mini_step_label.config(text="准备中...")
-            self._mini_stats_label.config(text="")
             self._update_mini_buttons()
         else:
             self._enter_mini_mode(task_name)
@@ -505,14 +490,11 @@ class CraftAssistantGUI:
         """停止制造"""
         self.craft_engine.stop()
         self.is_running = False
+        self.start_btn.config(state=tk.NORMAL)
+        self.stop_btn.config(state=tk.DISABLED)
+        self.status_label.config(text="就绪")
         if self._in_mini_mode:
-            self._mini_step_label.config(text="已停止")
             self._update_mini_buttons()
-            self.start_btn.config(state=tk.NORMAL)
-            self.stop_btn.config(state=tk.DISABLED)
-            self.status_label.config(text="就绪")
-        else:
-            self._exit_mini_mode()
 
     def _update_stats(self):
         """定时更新统计信息"""
@@ -521,8 +503,6 @@ class CraftAssistantGUI:
                 f"成功: {self.craft_engine.success_count} 次 | "
                 f"失败: {self.craft_engine.fail_count} 次")
             self.stats_label.config(text=stats_text)
-            if self._in_mini_mode:
-                self._mini_stats_label.config(text=stats_text)
             self.root.after(1000, self._update_stats)
         else:
             self.is_running = False
@@ -530,11 +510,11 @@ class CraftAssistantGUI:
                 f"完成 - 成功: {self.craft_engine.success_count} 次 | "
                 f"失败: {self.craft_engine.fail_count} 次")
             self.stats_label.config(text=stats_text)
+            self.start_btn.config(state=tk.NORMAL)
+            self.stop_btn.config(state=tk.DISABLED)
+            self.status_label.config(text="就绪")
             if self._in_mini_mode:
-                self._mini_step_label.config(text="已完成")
                 self._update_mini_buttons()
-            else:
-                self._exit_mini_mode()
 
     # ── 工具脚本 ──
 
@@ -580,7 +560,7 @@ class CraftAssistantGUI:
         """启动自动遇敌（直接使用已保存配置）"""
         config = load_tool_config().get('auto_encounter', {})
 
-        engine = AutoEncounterEngine(self.window_manager, self._log_message)
+        engine = AutoEncounterEngine(self.window_manager)
         engine.start(
             point1_x=config.get('point1_x', -200),
             point1_y=config.get('point1_y', 200),
@@ -594,7 +574,6 @@ class CraftAssistantGUI:
         self.stop_btn.config(state=tk.NORMAL)
         if self._in_mini_mode:
             self._mini_task_label.config(text="工具: 自动遇敌")
-            self._mini_step_label.config(text="运行中...")
             self._update_mini_buttons()
         else:
             self._enter_mini_mode("工具: 自动遇敌")
@@ -619,7 +598,7 @@ class CraftAssistantGUI:
             steps = dialog.result['steps']
             self._show_tool_info('loop_healing')
 
-        engine = LoopHealingEngine(self.window_manager, self._log_message)
+        engine = LoopHealingEngine(self.window_manager)
         engine.start(skill, member, steps)
         self._active_tool_engine = engine
         self._tool_stop_callback = self._stop_tool
@@ -627,7 +606,6 @@ class CraftAssistantGUI:
         self.stop_btn.config(state=tk.NORMAL)
         if self._in_mini_mode:
             self._mini_task_label.config(text="工具: 循环医疗")
-            self._mini_step_label.config(text="运行中...")
             self._update_mini_buttons()
         else:
             self._enter_mini_mode("工具: 循环医疗")
@@ -639,14 +617,11 @@ class CraftAssistantGUI:
             self._active_tool_engine.stop()
             self._active_tool_engine = None
         self._tool_stop_callback = None
+        self.start_btn.config(state=tk.NORMAL)
+        self.stop_btn.config(state=tk.DISABLED)
+        self.status_label.config(text="就绪")
         if self._in_mini_mode:
-            self._mini_step_label.config(text="已停止")
             self._update_mini_buttons()
-            self.start_btn.config(state=tk.NORMAL)
-            self.stop_btn.config(state=tk.DISABLED)
-            self.status_label.config(text="就绪")
-        else:
-            self._exit_mini_mode()
 
     def _monitor_tool_engine(self):
         """监控工具脚本引擎状态"""
@@ -655,21 +630,18 @@ class CraftAssistantGUI:
         else:
             self._active_tool_engine = None
             self._tool_stop_callback = None
+            self.start_btn.config(state=tk.NORMAL)
+            self.stop_btn.config(state=tk.DISABLED)
+            self.status_label.config(text="就绪")
             if self._in_mini_mode:
-                self._mini_step_label.config(text="已完成")
                 self._update_mini_buttons()
-                self.start_btn.config(state=tk.NORMAL)
-                self.stop_btn.config(state=tk.DISABLED)
-                self.status_label.config(text="就绪")
-            else:
-                self._exit_mini_mode()
 
     def _trigger_get_material(self):
         """快捷键触发获取材料（全局，不受其他功能运行状态影响）"""
         cfg = load_tool_config().get('get_material', {})
         mat_img = cfg.get('material_image', '')
         if not mat_img or not os.path.exists(mat_img):
-            self._log_message("获取材料: 未配置材料图片，请先配置")
+            messagebox.showwarning("提示", "获取材料: 未配置材料图片，请先配置")
             return
         self.get_material_engine.execute(mat_img)
 
@@ -679,16 +651,16 @@ class CraftAssistantGUI:
         """手动切换迷你模式"""
         if self._in_mini_mode:
             self._exit_mini_mode()
+            return
+        if self._selected_type == 'recipe' and self.selected_recipe:
+            task_name = f"配方: {self.selected_recipe['name']}"
+        elif self._selected_type == 'tool' and self._selected_tool_id:
+            info = TOOL_INFO.get(self._selected_tool_id, {})
+            task_name = f"工具: {info.get('name', self._selected_tool_id)}"
         else:
-            task_name = ""
-            if self._selected_type == 'recipe' and self.selected_recipe:
-                task_name = f"配方: {self.selected_recipe['name']}"
-            elif self._selected_type == 'tool' and self._selected_tool_id:
-                info = TOOL_INFO.get(self._selected_tool_id, {})
-                task_name = f"工具: {info.get('name', self._selected_tool_id)}"
-            else:
-                task_name = "未选择任务"
-            self._enter_mini_mode(task_name)
+            messagebox.showinfo("提示", "请先选择配方或工具")
+            return
+        self._enter_mini_mode(task_name)
 
     def _enter_mini_mode(self, task_name):
         """进入迷你模式"""
@@ -701,15 +673,11 @@ class CraftAssistantGUI:
         self._mini_frame.pack(fill=tk.BOTH, expand=True)
 
         self._mini_task_label.config(text=task_name)
-        self._mini_step_label.config(text="准备中...")
-        self._mini_stats_label.config(text="")
-        self._mini_hotkey_label.config(
-            text=f"停止热键: {self.hotkey_manager.global_stop_hotkey}")
-
         self._update_mini_buttons()
 
-        self.root.minsize(300, 100)
-        self.root.geometry("400x140")
+        self.root.minsize(180, 70)
+        self.root.geometry("220x80")
+        self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
 
     def _exit_mini_mode(self):
@@ -718,6 +686,7 @@ class CraftAssistantGUI:
             return
         self._in_mini_mode = False
 
+        self.root.overrideredirect(False)
         self.root.attributes('-topmost', False)
         self._mini_frame.pack_forget()
         self._main_frame.pack(fill=tk.BOTH, expand=True)
@@ -726,31 +695,50 @@ class CraftAssistantGUI:
         if self._saved_geometry:
             self.root.geometry(self._saved_geometry)
 
-        self.start_btn.config(state=tk.NORMAL)
-        self.stop_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="就绪")
+        # 主窗口按钮按当前运行状态同步
+        is_busy = self.is_running or bool(self._active_tool_engine)
+        self.start_btn.config(state=tk.DISABLED if is_busy else tk.NORMAL)
+        self.stop_btn.config(state=tk.NORMAL if is_busy else tk.DISABLED)
 
     def _update_mini_buttons(self):
-        """根据运行状态更新迷你模式按钮"""
-        is_busy = self.is_running or self._active_tool_engine
-        has_task = self._selected_type in ('recipe', 'tool')
-        self._mini_start_btn.config(
-            state=tk.DISABLED if is_busy or not has_task else tk.NORMAL)
-        self._mini_stop_btn.config(
-            state=tk.NORMAL if is_busy else tk.DISABLED)
+        """根据运行状态更新迷你模式按钮文本与可用性"""
+        # 「获取材料」是即时全局功能，无运行态，按钮置灰
+        if (self._selected_type == 'tool'
+                and self._selected_tool_id == 'get_material'):
+            self._mini_toggle_btn.config(text="请用快捷键", state=tk.DISABLED)
+            return
 
-    def _mini_start(self):
-        """迷你模式开始按钮"""
-        self._on_start()
+        is_busy = self.is_running or bool(self._active_tool_engine)
+        if is_busy:
+            self._mini_toggle_btn.config(text="停止", state=tk.NORMAL)
+        else:
+            has_task = self._selected_type in ('recipe', 'tool')
+            self._mini_toggle_btn.config(
+                text="开始",
+                state=tk.NORMAL if has_task else tk.DISABLED)
+
+    def _mini_toggle(self):
+        """迷你模式单按钮：根据状态切换 开始/停止"""
+        is_busy = self.is_running or bool(self._active_tool_engine)
+        if is_busy:
+            if self.is_running:
+                self.stop_craft()
+            elif self._active_tool_engine:
+                self._stop_tool()
+        else:
+            self._on_start()
         self._update_mini_buttons()
 
-    def _mini_stop(self):
-        """迷你模式停止按钮"""
-        if self.is_running:
-            self.stop_craft()
-        elif self._active_tool_engine:
-            self._stop_tool()
-        self._update_mini_buttons()
+    def _mini_drag_start(self, event):
+        """记录拖动起始偏移"""
+        self._mini_drag_offset = (
+            event.x_root - self.root.winfo_x(),
+            event.y_root - self.root.winfo_y())
+
+    def _mini_drag_motion(self, event):
+        """跟随鼠标移动窗口"""
+        ox, oy = self._mini_drag_offset
+        self.root.geometry(f"+{event.x_root - ox}+{event.y_root - oy}")
 
     # ── 快捷键设置 ──
 
@@ -858,17 +846,11 @@ class CraftAssistantGUI:
         self.root.after(0, self._append_log, f"[{timestamp}] {message}")
 
     def _append_log(self, text):
-        """向日志文本框追加内容，同时更新迷你模式步骤"""
+        """向日志文本框追加内容"""
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, text + '\n')
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
-
-        if self._in_mini_mode:
-            step_text = text
-            if text.startswith('[') and '] ' in text:
-                step_text = text.split('] ', 1)[1]
-            self._mini_step_label.config(text=step_text)
 
     # ── 清理 ──
 
