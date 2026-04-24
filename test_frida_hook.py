@@ -70,9 +70,18 @@ send('Frida runtime: ' + (typeof Frida !== 'undefined' && Frida.version ? Frida.
 var fakeX = 0;
 var fakeY = 0;
 
+// 调用计数: 用来诊断游戏到底调了哪个 API 读光标
+var stats = { GetCursorPos: 0, GetCursorInfo: 0, GetMessagePos: 0 };
+
 rpc.exports = {
     setpos: function (x, y) { fakeX = x; fakeY = y; },
-    getpos: function () { return [fakeX, fakeY]; }
+    getpos: function () { return [fakeX, fakeY]; },
+    stats: function () { return stats; },
+    resetstats: function () {
+        stats.GetCursorPos = 0;
+        stats.GetCursorInfo = 0;
+        stats.GetMessagePos = 0;
+    }
 };
 
 var gcp = resolveExport('user32.dll', 'GetCursorPos');
@@ -82,6 +91,7 @@ if (gcp === null) {
     Interceptor.attach(gcp.addr, {
         onEnter: function (args) { this.lp = args[0]; },
         onLeave: function (retval) {
+            stats.GetCursorPos++;
             if (!this.lp.isNull()) {
                 this.lp.writeS32(fakeX);
                 this.lp.add(4).writeS32(fakeY);
@@ -97,6 +107,7 @@ if (gci !== null) {
     Interceptor.attach(gci.addr, {
         onEnter: function (args) { this.lp = args[0]; },
         onLeave: function (retval) {
+            stats.GetCursorInfo++;
             if (!this.lp.isNull()) {
                 // CURSORINFO: DWORD cbSize; DWORD flags; HCURSOR hCursor; POINT ptScreenPos;
                 // HCURSOR 是指针, 32 位 = 4 字节, 64 位 = 8 字节
@@ -107,6 +118,19 @@ if (gci !== null) {
         }
     });
     send('HOOKED: GetCursorInfo @ ' + gci.addr);
+}
+
+// GetMessagePos: 返回 DWORD (LOWORD=x, HIWORD=y), 老 Win32 游戏最常用的取光标方式
+var gmp = resolveExport('user32.dll', 'GetMessagePos');
+if (gmp !== null) {
+    Interceptor.attach(gmp.addr, {
+        onLeave: function (retval) {
+            stats.GetMessagePos++;
+            var packed = (((fakeY & 0xFFFF) << 16) | (fakeX & 0xFFFF)) >>> 0;
+            retval.replace(ptr(packed));
+        }
+    });
+    send('HOOKED: GetMessagePos @ ' + gmp.addr);
 }
 """
 
@@ -137,6 +161,23 @@ def post_click(hwnd):
     win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, 0)
     time.sleep(0.05)
     win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, 0)
+
+
+def _pack_lparam(x, y):
+    return ((y & 0xFFFF) << 16) | (x & 0xFFFF)
+
+
+def post_move_and_click(hwnd, screen_x, screen_y):
+    """先发 WM_MOUSEMOVE 再发 WM_LBUTTONDOWN/UP, lparam 里塞客户区坐标。
+    如果游戏靠 WM_MOUSEMOVE 追踪位置, 这样就能让它"以为"光标在目标位置。"""
+    cx, cy = win32gui.ScreenToClient(hwnd, (screen_x, screen_y))
+    lp = _pack_lparam(cx, cy)
+    win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lp)
+    time.sleep(0.03)
+    win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lp)
+    time.sleep(0.05)
+    win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lp)
+    return cx, cy
 
 
 # ---------- GUI ----------
@@ -188,11 +229,21 @@ class TestGUI:
         self.lbl_status.pack(anchor='w', padx=6, pady=2)
 
         # 3. 点击
-        f3 = ttk.LabelFrame(self.root, text="3. 发送点击 (游戏会按假光标位置响应, 真实鼠标不动)")
+        f3 = ttk.LabelFrame(self.root, text="3. 发送点击 (真实鼠标要先挪到远离游戏的位置!)")
         f3.pack(fill='x', **pad)
         r = ttk.Frame(f3); r.pack(fill='x', padx=6, pady=6)
-        ttk.Button(r, text="发送左键点击到游戏窗口", command=self._click).pack(side='left', padx=8)
-        ttk.Label(r, text="← 点这个前, 把真实鼠标移到远离游戏的位置, 观察游戏是否仍按假坐标响应",
+        ttk.Button(r, text="仅点击 (靠 hook 伪造光标)", command=self._click).pack(side='left', padx=4)
+        ttk.Button(r, text="假鼠标移动+点击 (塞 lparam)", command=self._click_with_move).pack(side='left', padx=4)
+        ttk.Label(f3, text="  两种方式都用上面输入框里的坐标作为目标屏幕坐标",
+                  foreground='gray').pack(anchor='w', padx=6)
+
+        # 4. 诊断: 查看 hook 被调用了几次, 判断游戏实际用的是哪个 API
+        f5 = ttk.LabelFrame(self.root, text="4. 诊断 (点击后查看计数, 判断游戏调了哪个 API)")
+        f5.pack(fill='x', **pad)
+        r = ttk.Frame(f5); r.pack(fill='x', padx=6, pady=6)
+        ttk.Button(r, text="查询调用计数", command=self._show_stats).pack(side='left', padx=4)
+        ttk.Button(r, text="重置计数", command=self._reset_stats).pack(side='left', padx=4)
+        ttk.Label(r, text="  建议: 先重置 → 点击 → 查询, 看哪项计数涨了",
                   foreground='gray').pack(side='left')
 
         # 日志
@@ -305,9 +356,44 @@ class TestGUI:
             messagebox.showerror("", "窗口已失效, 请刷新"); return
         try:
             post_click(self.hwnd)
-            self._log(f"已发送左键点击到 HWND={self.hwnd} (游戏应读取到假光标位置)")
+            self._log(f"已发送仅点击到 HWND={self.hwnd} (依赖 hook 伪造光标)")
         except Exception as e:
             self._log(f"点击失败: {e}")
+
+    def _click_with_move(self):
+        if not self.hwnd:
+            messagebox.showwarning("", "请先选择窗口"); return
+        if not win32gui.IsWindow(self.hwnd):
+            messagebox.showerror("", "窗口已失效, 请刷新"); return
+        try:
+            sx = int(self.ent_x.get()); sy = int(self.ent_y.get())
+        except ValueError:
+            messagebox.showerror("", "X/Y 必须是整数"); return
+        try:
+            cx, cy = post_move_and_click(self.hwnd, sx, sy)
+            self._log(f"已发送 MouseMove+点击: 屏幕({sx},{sy}) → 客户区({cx},{cy})")
+        except Exception as e:
+            self._log(f"点击失败: {e}")
+
+    def _show_stats(self):
+        if not self.script:
+            messagebox.showwarning("", "还未注入"); return
+        try:
+            s = self.script.exports_sync.stats()
+            self._log(f"Hook 调用计数: GetCursorPos={s.get('GetCursorPos')}  "
+                      f"GetCursorInfo={s.get('GetCursorInfo')}  "
+                      f"GetMessagePos={s.get('GetMessagePos')}")
+        except Exception as e:
+            self._log(f"查询失败: {e}")
+
+    def _reset_stats(self):
+        if not self.script:
+            messagebox.showwarning("", "还未注入"); return
+        try:
+            self.script.exports_sync.resetstats()
+            self._log("已重置 hook 调用计数")
+        except Exception as e:
+            self._log(f"重置失败: {e}")
 
     def _on_script_msg(self, msg, _data):
         # 此回调在 frida 线程, 用队列跨线程送到主线程显示
