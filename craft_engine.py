@@ -9,11 +9,11 @@
 import os
 import time
 import threading
-import pyautogui
 import cv2
 import numpy as np
 from PIL import Image
 from screenshot_util import take_screenshot
+import bg_input
 
 
 class CraftEngine:
@@ -219,14 +219,13 @@ class CraftEngine:
                     break
 
                 # 7. 双击匹配到的格子（移动→等待→单击→间隔→单击）
+                hwnd = self.window_manager.hwnd
                 for slot in matched_slots:
                     if self._check_stop():
                         break
-                    pyautogui.moveTo(slot.screen_x, slot.screen_y)
-                    time.sleep(click_pre_delay)
-                    pyautogui.click()
-                    time.sleep(click_interval)
-                    pyautogui.click()
+                    bg_input.post_double_click(
+                        hwnd, slot.screen_x, slot.screen_y,
+                        pre_delay=click_pre_delay, interval=click_interval)
                     time.sleep(0.3)
 
                 if self._check_stop():
@@ -238,8 +237,8 @@ class CraftEngine:
                     self._click_template(execute_button_path, window_rect)
                 time.sleep(0.3)
 
-                # 鼠标移开，避免遮挡按钮影响图像识别
-                pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
+                # 虚拟光标移开游戏可能的 tooltip 区域
+                bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
                 time.sleep(0.2)
 
                 # 9. 等待制造完成
@@ -261,7 +260,7 @@ class CraftEngine:
                                 break
                             self._log(f"点击制造完成按钮(第{click_attempt+1}次)...")
                             self._click_template(completion_image_path, window_rect)
-                            pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
+                            bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
                             time.sleep(0.5)
                             # 确认按钮是否已消失
                             still_found = self._find_template(
@@ -307,17 +306,18 @@ class CraftEngine:
 
     def _do_organize(self, organize_button_path, window_rect):
         """执行一次整理背包操作"""
+        hwnd = self.window_manager.hwnd
         self._log("整理背包: 打开背包...")
-        pyautogui.hotkey('ctrl', 'e')
+        bg_input.post_hotkey(hwnd, 'ctrl', 'e')
         time.sleep(0.5)
         self._click_template(
             organize_button_path, window_rect,
             pre_delay=0.5, long_press=True)
         time.sleep(1.0)
         self._log("整理背包: 关闭背包...")
-        pyautogui.hotkey('ctrl', 'e')
+        bg_input.post_hotkey(hwnd, 'ctrl', 'e')
         time.sleep(0.5)
-        pyautogui.moveTo(window_rect[0] + 50, window_rect[1] + 50)
+        bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
         time.sleep(0.5)
         self._log("整理完成")
 
@@ -351,14 +351,12 @@ class CraftEngine:
             click_x = window_rect[0] + max_loc[0] + tw // 2
             click_y = window_rect[1] + max_loc[1] + th // 2
             self._log(f"[点击] {name} 置信度:{max_val:.2f} 坐标:({click_x},{click_y})")
-            pyautogui.moveTo(click_x, click_y)
-            time.sleep(pre_delay)
+            hwnd = self.window_manager.hwnd
             if long_press:
-                pyautogui.mouseDown()
-                time.sleep(0.5)
-                pyautogui.mouseUp()
+                bg_input.post_long_press(hwnd, click_x, click_y,
+                                         pre_delay=pre_delay, hold_time=0.5)
             else:
-                pyautogui.click()
+                bg_input.post_click(hwnd, click_x, click_y, pre_delay=pre_delay)
             return True
         self._log(f"[点击] {name} 未找到，最高置信度:{max_val:.2f}")
         return False

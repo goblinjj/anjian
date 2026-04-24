@@ -8,11 +8,12 @@
 
 import time
 import threading
-import pyautogui
+import pyautogui  # 仅用于 pyautogui.position() 读取真实鼠标位置 (不会移动鼠标)
 import cv2
 import numpy as np
 from PIL import Image
 from screenshot_util import take_screenshot
+import bg_input
 
 
 class AutoEncounterEngine:
@@ -75,24 +76,17 @@ class AutoEncounterEngine:
             self._log(f"点击延迟: {click_delay}ms")
             self._log("开始自动遇敌循环...")
 
+            hwnd = self.window_manager.hwnd
             count = 0
             while not self.should_stop:
                 count += 1
 
-                pyautogui.moveTo(bl_x, bl_y)
-                time.sleep(delay_sec)
-                if self.should_stop:
-                    break
-                pyautogui.click()
+                bg_input.post_click(hwnd, bl_x, bl_y, pre_delay=delay_sec)
                 time.sleep(delay_sec)
                 if self.should_stop:
                     break
 
-                pyautogui.moveTo(tr_x, tr_y)
-                time.sleep(delay_sec)
-                if self.should_stop:
-                    break
-                pyautogui.click()
+                bg_input.post_click(hwnd, tr_x, tr_y, pre_delay=delay_sec)
                 time.sleep(delay_sec)
 
                 if count % 10 == 0:
@@ -181,6 +175,7 @@ class LoopHealingEngine:
                 return
 
             self._log(f"开始循环医疗 (共{len(steps)}个步骤)...")
+            hwnd = self.window_manager.hwnd
             count = 0
 
             while not self.should_stop:
@@ -202,8 +197,8 @@ class LoopHealingEngine:
                         # 查找治疗技能图片
                         skill_pos = self._find_template(skill_image, rect)
                         if not skill_pos:
-                            self._log(f"  步骤{i+1}: 未找到治疗技能，移开鼠标重试...")
-                            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
+                            self._log(f"  步骤{i+1}: 未找到治疗技能，移开重试...")
+                            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -213,23 +208,21 @@ class LoopHealingEngine:
                                     skill_image, rect)
                                 if skill_pos:
                                     break
-                                pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
+                                bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
                             if not skill_pos or self.should_stop:
                                 break
                         sx, sy, _ = skill_pos
-                        pyautogui.moveTo(sx, sy)
-                        time.sleep(0.2)
                         if self.should_stop:
                             break
-                        pyautogui.click()
+                        bg_input.post_click(hwnd, sx, sy, pre_delay=0.2)
                         self._log(f"  步骤{i+1}: 点击治疗技能")
 
                     elif step['type'] == 'member':
                         # 查找队员定位图片获取基准坐标
                         member_pos = self._find_template(member_image, rect)
                         if not member_pos:
-                            self._log(f"  步骤{i+1}: 未找到队员定位，移开鼠标重试...")
-                            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
+                            self._log(f"  步骤{i+1}: 未找到队员定位，移开重试...")
+                            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
                             while not self.should_stop:
                                 time.sleep(0.5)
                                 rect = self.window_manager.get_window_rect()
@@ -239,7 +232,7 @@ class LoopHealingEngine:
                                     member_image, rect)
                                 if member_pos:
                                     break
-                                pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
+                                bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
                             if not member_pos or self.should_stop:
                                 break
                         mx, my, _ = member_pos
@@ -247,11 +240,9 @@ class LoopHealingEngine:
                         oy = step.get('offset_y', 0)
                         click_x = mx + ox
                         click_y = my + oy
-                        pyautogui.moveTo(click_x, click_y)
-                        time.sleep(0.2)
                         if self.should_stop:
                             break
-                        pyautogui.click()
+                        bg_input.post_click(hwnd, click_x, click_y, pre_delay=0.2)
                         self._log(f"  步骤{i+1}: 队员({ox},{oy})")
 
                     elif step['type'] == 'delay':
@@ -333,24 +324,22 @@ class GetMaterialEngine:
                 return
 
             self._log("获取材料: 开始执行")
-
-            # 记录当前鼠标位置，执行完毕后还原
-            saved_x, saved_y = pyautogui.position()
+            hwnd = self.window_manager.hwnd
 
             rect = self.window_manager.get_window_rect()
             if not rect:
                 self._log("  错误: 无法获取窗口坐标")
                 return
 
-            # 1. 当前鼠标位置双击，然后移动鼠标到窗口相对(50,50)
+            # 1. 以用户当前鼠标指向的屏幕位置为目标, 用后台消息双击
             x, y = pyautogui.position()
-            pyautogui.doubleClick(x, y)
+            bg_input.post_double_click(hwnd, x, y)
             time.sleep(0.2)
             if self.should_stop:
                 self._log("获取材料: 已取消")
                 return
-            pyautogui.moveTo(rect[0] + 50, rect[1] + 50)
-            self._log(f"  双击当前位置 ({x}, {y})，鼠标移开")
+            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
+            self._log(f"  双击目标位置 ({x}, {y})")
 
             # 2. 等待 300ms
             time.sleep(0.3)
@@ -378,8 +367,7 @@ class GetMaterialEngine:
                 return
 
             mx, my, _ = pos
-            pyautogui.moveTo(mx, my)
-            pyautogui.click()
+            bg_input.post_click(hwnd, mx, my)
             self._log(f"  点击材料图片 ({mx}, {my})")
 
             # 4. 等待 300ms
@@ -389,7 +377,7 @@ class GetMaterialEngine:
                 return
 
             # 5. Ctrl+E 打开背包
-            pyautogui.hotkey('ctrl', 'e')
+            bg_input.post_hotkey(hwnd, 'ctrl', 'e')
             self._log("  按下 Ctrl+E")
 
             self._log("获取材料: 执行完成")
@@ -397,6 +385,4 @@ class GetMaterialEngine:
         except Exception as e:
             self._log(f"获取材料出错: {str(e)}")
         finally:
-            pyautogui.moveTo(saved_x, saved_y)
-            self._log(f"  鼠标还原到 ({saved_x}, {saved_y})")
             self._busy = False
