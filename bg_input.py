@@ -23,6 +23,7 @@ user32 = ctypes.windll.user32
 WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
+WM_LBUTTONDBLCLK = 0x0203
 WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 MK_LBUTTON = 0x0001
@@ -124,19 +125,25 @@ def post_long_press(hwnd, screen_x, screen_y, pre_delay=0.0, hold_time=0.5):
     post_click(hwnd, screen_x, screen_y, pre_delay=pre_delay, hold_time=hold_time)
 
 
-def post_double_click(hwnd, screen_x, screen_y, pre_delay=0.0, interval=0.1):
-    """左键双击。"""
+def post_double_click(hwnd, screen_x, screen_y, pre_delay=0.0, interval=0.05):
+    """左键双击。
+
+    老 Win32 游戏识别双击靠 WM_LBUTTONDBLCLK 消息, 连发两个 WM_LBUTTONDOWN
+    不会被识别为双击。这里用 Windows 自己在双击达成时派发的标准序列:
+        DOWN → UP → DBLCLK → UP
+    """
     cx, cy = _screen_to_client(hwnd, screen_x, screen_y)
     lp = _pack_lparam(cx, cy)
     _post(hwnd, WM_MOUSEMOVE, 0, lp)
     if pre_delay > 0:
         time.sleep(pre_delay)
-    for i in range(2):
-        _post(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
-        time.sleep(0.05)
-        _post(hwnd, WM_LBUTTONUP, 0, lp)
-        if i == 0:
-            time.sleep(interval)
+    _post(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
+    time.sleep(0.03)
+    _post(hwnd, WM_LBUTTONUP, 0, lp)
+    time.sleep(interval)
+    _post(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lp)
+    time.sleep(0.03)
+    _post(hwnd, WM_LBUTTONUP, 0, lp)
 
 
 # ---------- 键盘 ----------
