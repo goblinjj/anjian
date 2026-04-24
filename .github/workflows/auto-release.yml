@@ -68,7 +68,7 @@ jobs:
 
     - name: Build background-input test EXE
       run: |
-        Write-Host "Building test_bg_input.exe..."
+        Write-Host "Building BgInputTest.exe..."
         python -m PyInstaller --onefile --windowed --name=BgInputTest --noupx --clean --noconfirm `
           --hidden-import=PIL._tkinter_finder `
           --hidden-import=PIL.ImageTk `
@@ -77,10 +77,7 @@ jobs:
           --hidden-import=win32api `
           --hidden-import=win32ui `
           test_bg_input.py
-        if (Test-Path "dist\BgInputTest.exe") {
-          Move-Item -Force "dist\BgInputTest.exe" "dist\后台消息测试.exe"
-          Write-Host "Renamed BgInputTest.exe -> 后台消息测试.exe"
-        } else {
+        if (-not (Test-Path "dist\BgInputTest.exe")) {
           Write-Host "BgInputTest.exe not found"
           exit 1
         }
@@ -163,7 +160,7 @@ jobs:
         prerelease: false
         files: |
           dist/魔力宝贝制造助手.exe
-          dist/后台消息测试.exe
+          dist/BgInputTest.exe
           dist/*_hashes.txt
         generate_release_notes: false
       env:
@@ -175,6 +172,6 @@ jobs:
         name: moli-craft-assistant-${{ steps.version.outputs.version }}
         path: |
           dist/魔力宝贝制造助手.exe
-          dist/后台消息测试.exe
+          dist/BgInputTest.exe
           dist/*_hashes.txt
         retention-days: 30
