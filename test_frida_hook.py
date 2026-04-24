@@ -39,6 +39,34 @@ except ImportError as e:
 
 
 HOOK_SCRIPT = r"""
+// 跨 Frida 版本解析导出符号 (Frida 17 移除了 Module.findExportByName)
+function resolveExport(moduleName, exportName) {
+    var attempts = [
+        function () { return Module.findExportByName(moduleName, exportName); },
+        function () { return Module.getExportByName(moduleName, exportName); },
+        function () { return Module.findGlobalExportByName(exportName); },
+        function () { return Module.getGlobalExportByName(exportName); },
+        function () {
+            var m = Process.getModuleByName(moduleName);
+            return m.getExportByName(exportName);
+        },
+        function () {
+            var m = Process.findModuleByName(moduleName);
+            return m ? m.getExportByName(exportName) : null;
+        }
+    ];
+    for (var i = 0; i < attempts.length; i++) {
+        try {
+            var r = attempts[i]();
+            if (r) { return { addr: r, via: i }; }
+        } catch (e) { /* try next */ }
+    }
+    return null;
+}
+
+send('Frida runtime: ' + (typeof Frida !== 'undefined' && Frida.version ? Frida.version : 'unknown')
+   + ', pointerSize=' + Process.pointerSize);
+
 var fakeX = 0;
 var fakeY = 0;
 
@@ -47,11 +75,11 @@ rpc.exports = {
     getpos: function () { return [fakeX, fakeY]; }
 };
 
-var pGetCursorPos = Module.findExportByName('user32.dll', 'GetCursorPos');
-if (pGetCursorPos === null) {
-    send('ERROR: GetCursorPos not found');
+var gcp = resolveExport('user32.dll', 'GetCursorPos');
+if (gcp === null) {
+    send('ERROR: GetCursorPos not resolvable via any API');
 } else {
-    Interceptor.attach(pGetCursorPos, {
+    Interceptor.attach(gcp.addr, {
         onEnter: function (args) { this.lp = args[0]; },
         onLeave: function (retval) {
             if (!this.lp.isNull()) {
@@ -60,26 +88,25 @@ if (pGetCursorPos === null) {
             }
         }
     });
-    send('HOOKED: GetCursorPos');
+    send('HOOKED: GetCursorPos @ ' + gcp.addr + ' (via method #' + gcp.via + ')');
 }
 
-// 顺手 hook 一下 GetCursorInfo, 某些游戏用它代替 GetCursorPos
-var pGetCursorInfo = Module.findExportByName('user32.dll', 'GetCursorInfo');
-if (pGetCursorInfo !== null) {
-    Interceptor.attach(pGetCursorInfo, {
+// 顺手 hook GetCursorInfo, 某些游戏用它代替 GetCursorPos
+var gci = resolveExport('user32.dll', 'GetCursorInfo');
+if (gci !== null) {
+    Interceptor.attach(gci.addr, {
         onEnter: function (args) { this.lp = args[0]; },
         onLeave: function (retval) {
             if (!this.lp.isNull()) {
-                // CURSORINFO 结构: DWORD cbSize; DWORD flags; HCURSOR hCursor; POINT ptScreenPos;
-                // POINT 在 32 位系统是偏移 12, 在 64 位系统是偏移 16 (HCURSOR 是指针)
-                var ptrSize = Process.pointerSize;
-                var offset = 4 + 4 + ptrSize;
+                // CURSORINFO: DWORD cbSize; DWORD flags; HCURSOR hCursor; POINT ptScreenPos;
+                // HCURSOR 是指针, 32 位 = 4 字节, 64 位 = 8 字节
+                var offset = 4 + 4 + Process.pointerSize;
                 this.lp.add(offset).writeS32(fakeX);
                 this.lp.add(offset + 4).writeS32(fakeY);
             }
         }
     });
-    send('HOOKED: GetCursorInfo');
+    send('HOOKED: GetCursorInfo @ ' + gci.addr);
 }
 """
 
