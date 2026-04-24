@@ -12,6 +12,7 @@ import threading
 import cv2
 import numpy as np
 from PIL import Image
+import screenshot_util
 from screenshot_util import take_screenshot
 import bg_input
 
@@ -70,6 +71,7 @@ class CraftEngine:
 
     def _craft_loop(self, recipe, settings):
         """制造主循环"""
+        screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
         try:
             materials = recipe['materials']
             craft_time = recipe.get('craft_time', 10.0)
@@ -301,6 +303,7 @@ class CraftEngine:
         except Exception as e:
             self._log(f"制造出错: {str(e)}")
         finally:
+            screenshot_util.set_capture_hwnd(None)
             self.is_running = False
             self._log("制造已停止")
 

@@ -12,6 +12,7 @@ import pyautogui  # 仅用于 pyautogui.position() 读取真实鼠标位置 (不
 import cv2
 import numpy as np
 from PIL import Image
+import screenshot_util
 from screenshot_util import take_screenshot
 import bg_input
 
@@ -49,6 +50,7 @@ class AutoEncounterEngine:
             self.status_callback(message)
 
     def _run(self, point1_x, point1_y, point2_x, point2_y, click_delay):
+        screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
         try:
             if not self.window_manager.is_window_valid():
                 self._log("错误: 未绑定游戏窗口")
@@ -95,6 +97,7 @@ class AutoEncounterEngine:
         except Exception as e:
             self._log(f"自动遇敌出错: {str(e)}")
         finally:
+            screenshot_util.set_capture_hwnd(None)
             self.is_running = False
             self._log("自动遇敌已停止")
 
@@ -169,6 +172,7 @@ class LoopHealingEngine:
         return None
 
     def _run(self, skill_image, member_image, steps):
+        screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
         try:
             if not self.window_manager.is_window_valid():
                 self._log("错误: 未绑定游戏窗口")
@@ -257,6 +261,7 @@ class LoopHealingEngine:
         except Exception as e:
             self._log(f"循环医疗出错: {str(e)}")
         finally:
+            screenshot_util.set_capture_hwnd(None)
             self.is_running = False
             self._log("循环医疗已停止")
 
@@ -318,6 +323,7 @@ class GetMaterialEngine:
         ).start()
 
     def _run(self, material_image):
+        screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
         try:
             if not self.window_manager.is_window_valid():
                 self._log("获取材料: 未绑定游戏窗口")
@@ -385,4 +391,5 @@ class GetMaterialEngine:
         except Exception as e:
             self._log(f"获取材料出错: {str(e)}")
         finally:
+            screenshot_util.set_capture_hwnd(None)
             self._busy = False
