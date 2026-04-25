@@ -31,6 +31,7 @@ except ImportError:
 
 
 PW_RENDERFULLCONTENT = 2
+GA_ROOT = 2
 
 _bound_hwnd = None
 
@@ -39,6 +40,10 @@ _user32.PrintWindow.argtypes = [
     ctypes.wintypes.HWND, ctypes.wintypes.HDC, ctypes.wintypes.UINT,
 ]
 _user32.PrintWindow.restype = ctypes.wintypes.BOOL
+_user32.WindowFromPoint.argtypes = [ctypes.wintypes.POINT]
+_user32.WindowFromPoint.restype = ctypes.wintypes.HWND
+_user32.GetAncestor.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.UINT]
+_user32.GetAncestor.restype = ctypes.wintypes.HWND
 
 
 def set_capture_hwnd(hwnd):
@@ -50,6 +55,31 @@ def set_capture_hwnd(hwnd):
 
 def get_capture_hwnd():
     return _bound_hwnd
+
+
+def _is_occluded(hwnd):
+    """判断窗口的屏幕区域是否被其他窗口遮挡。
+    在 9 个采样点用 WindowFromPoint, 只要有一点顶层不是自己 (或子窗口) 就算被遮。"""
+    if not _HAS_WIN32:
+        return False
+    try:
+        l, t, r, b = win32gui.GetWindowRect(hwnd)
+    except Exception:
+        return True  # 查不到就保守走 PrintWindow
+    w, h = r - l, b - t
+    if w <= 0 or h <= 0:
+        return True
+    xs = [l + 5, l + w // 2, r - 5]
+    ys = [t + 5, t + h // 2, b - 5]
+    for y in ys:
+        for x in xs:
+            top = _user32.WindowFromPoint(ctypes.wintypes.POINT(x, y))
+            if not top:
+                continue
+            root = _user32.GetAncestor(top, GA_ROOT)
+            if root != hwnd:
+                return True
+    return False
 
 
 def _capture_window(hwnd):
@@ -137,12 +167,14 @@ def take_screenshot(region=None):
     Args:
         region: 可选 (left, top, width, height) 屏幕坐标区域。
 
-    如果通过 set_capture_hwnd() 绑定了窗口且 region 不为空,
-    会先尝试 PrintWindow 抓整窗口再裁剪 region;
-    PrintWindow 失败或黑屏时回退到 mss。
+    策略:
+        - 未绑定窗口 / region=None: 直接 mss (与原行为一致)。
+        - 已绑定窗口且未被遮挡: 走 mss。零闪烁、零开销。
+        - 已绑定窗口且被遮挡: PrintWindow 抓整窗口再裁剪。会触发游戏重绘,
+          产生闪烁, 但游戏被覆盖时用户看不见。失败 / 黑屏自动回退 mss。
     """
     hwnd = _bound_hwnd
-    if region is not None and hwnd and _HAS_WIN32:
+    if region is not None and hwnd and _HAS_WIN32 and _is_occluded(hwnd):
         win_img = _capture_window(hwnd)
         if win_img is not None:
             try:
@@ -161,5 +193,5 @@ def take_screenshot(region=None):
             crop_b = min(win_img.height, crop_b)
             if crop_r > crop_l and crop_b > crop_t:
                 return win_img.crop((crop_l, crop_t, crop_r, crop_b))
-        # PrintWindow 不可用/失败/黑屏, 回退 mss
+        # PrintWindow 失败/黑屏, 回退 mss (尽管会截到遮挡物)
     return _mss_capture(region)
