@@ -66,32 +66,6 @@ jobs:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
 
-    - name: Build Capture test EXE
-      run: |
-        Write-Host "Installing windows-capture..."
-        pip install windows-capture
-        Write-Host "Building CaptureTest.exe..."
-        python -m PyInstaller --onefile --name=CaptureTest --noupx --clean --noconfirm `
-          --collect-all windows_capture `
-          --hidden-import=win32gui `
-          --hidden-import=win32con `
-          --hidden-import=win32ui `
-          --hidden-import=win32api `
-          --hidden-import=mss `
-          --hidden-import=PIL.Image `
-          --hidden-import=PIL.ImageTk `
-          test_capture.py
-        if (-not (Test-Path "dist\CaptureTest.exe")) {
-          Write-Host "CaptureTest.exe not found"
-          exit 1
-        }
-      shell: pwsh
-      env:
-        CI: true
-        GITHUB_ACTIONS: true
-        PYTHONIOENCODING: utf-8
-        PYTHONUTF8: 1
-
     - name: Verify build and generate hashes
       run: |
         $exePath = "dist\魔力宝贝制造助手.exe"
@@ -164,7 +138,6 @@ jobs:
         prerelease: false
         files: |
           dist/魔力宝贝制造助手.exe
-          dist/CaptureTest.exe
           dist/*_hashes.txt
         generate_release_notes: false
       env:
@@ -176,6 +149,5 @@ jobs:
         name: moli-craft-assistant-${{ steps.version.outputs.version }}
         path: |
           dist/魔力宝贝制造助手.exe
-          dist/CaptureTest.exe
           dist/*_hashes.txt
         retention-days: 30

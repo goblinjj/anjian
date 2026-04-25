@@ -6,11 +6,19 @@
 负责全局快捷键监听和管理
 """
 
+import ctypes
 import json
 import os
 import keyboard
 
 HOTKEY_CONFIG_FILE = "hotkey_config.json"
+
+# Windows API: 检查前台窗口, 用于把热键限定在"绑定游戏窗口激活时"响应
+_GA_ROOT = 2
+_user32 = ctypes.windll.user32
+_user32.GetForegroundWindow.restype = ctypes.c_void_p
+_user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+_user32.GetAncestor.restype = ctypes.c_void_p
 
 
 class HotkeyManager:
@@ -108,8 +116,26 @@ class HotkeyManager:
         except Exception:
             pass
 
+    def _is_my_game_foreground(self):
+        """当前前台窗口是否 = 本实例绑定的游戏窗口。
+        用来把热键限定在对应游戏激活时才响应, 避免多开实例互相抢。
+        未绑定窗口时返回 True (不过滤, 兼容旧行为)。"""
+        wm = getattr(self.gui, 'window_manager', None)
+        if not wm or not wm.hwnd:
+            return True
+        fg = _user32.GetForegroundWindow()
+        if not fg:
+            return False
+        root = _user32.GetAncestor(fg, _GA_ROOT) or fg
+        try:
+            return int(root) == int(wm.hwnd)
+        except (TypeError, ValueError):
+            return False
+
     def _on_start_hotkey(self):
         """快捷键启动执行"""
+        if not self._is_my_game_foreground():
+            return
         self._clear_hotkey_char()
         if self.gui.is_running or self.gui._tool_stop_callback:
             return
@@ -117,6 +143,8 @@ class HotkeyManager:
 
     def _on_stop_hotkey(self):
         """快捷键停止执行（制造或工具脚本或获取材料）"""
+        if not self._is_my_game_foreground():
+            return
         self._clear_hotkey_char()
         # 获取材料是独立运行的，始终尝试停止
         self.gui.get_material_engine.stop()
@@ -127,6 +155,8 @@ class HotkeyManager:
 
     def _on_get_material_hotkey(self):
         """快捷键触发获取材料（全局，不受其他功能影响）"""
+        if not self._is_my_game_foreground():
+            return
         self._clear_hotkey_char()
         self.gui.root.after(0, self.gui._trigger_get_material)
 
