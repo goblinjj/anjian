@@ -109,7 +109,15 @@ class LoopHealingEngine:
     - skill: 查找并点击治疗技能
     - member: 在队员基准位置 + 偏移处点击
     每次点击前统一 200ms 延迟。
+
+    设计意图: 每次 main_gui 调用 start() 时, 都会创建一个新的引擎实例
+    (见 main_gui.py:_start_loop_healing), 因此 stop → 重新 start 永远从
+    第 1 个步骤开始, 不保留任何"上次执行到第几步"的状态。
+    若步骤里某张图片在 RETRY_TIMEOUT 秒内仍找不到, 当轮放弃, 外层 while
+    自动进入下一轮 (count+1, i 从 0 重启), 让游戏中间状态有机会恢复。
     """
+
+    RETRY_TIMEOUT = 3.0  # 单步图片重试上限 (秒)
 
     def __init__(self, window_manager, status_callback=None):
         self.window_manager = window_manager
@@ -171,6 +179,40 @@ class LoopHealingEngine:
             return (click_x, click_y, max_val)
         return None
 
+    def _find_with_retry(self, template_path, hwnd, timeout, label):
+        """限时反复查找模板, 找不到时移开鼠标后继续找。
+
+        Args:
+            template_path: 模板图片路径
+            hwnd: 目标窗口句柄, 用于 post_move
+            timeout: 重试时间上限 (秒)
+            label: 日志前缀, 例如 "步骤3"
+
+        Returns:
+            tuple: (pos, rect)
+                pos: (x, y, conf) 或 None (超时 / should_stop / 取窗口失败)
+                rect: 最后一次有效的 window_rect, 失败时可能为 None
+        """
+        rect = self.window_manager.get_window_rect()
+        if not rect:
+            return None, None
+        pos = self._find_template(template_path, rect)
+        if pos:
+            return pos, rect
+        self._log(f"  {label}: 未找到, 移开重试 ({timeout:.0f}秒内)...")
+        bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
+        deadline = time.time() + timeout
+        while not self.should_stop and time.time() < deadline:
+            time.sleep(0.5)
+            rect = self.window_manager.get_window_rect()
+            if not rect:
+                return None, None
+            pos = self._find_template(template_path, rect)
+            if pos:
+                return pos, rect
+            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
+        return None, rect
+
     def _run(self, skill_image, member_image, steps):
         screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
         try:
@@ -198,23 +240,16 @@ class LoopHealingEngine:
                         break
 
                     if step['type'] == 'skill':
-                        # 查找治疗技能图片
-                        skill_pos = self._find_template(skill_image, rect)
+                        # 查找治疗技能图片 (限时重试)
+                        skill_pos, rect = self._find_with_retry(
+                            skill_image, hwnd, self.RETRY_TIMEOUT,
+                            label=f"步骤{i+1}")
+                        if self.should_stop:
+                            break
                         if not skill_pos:
-                            self._log(f"  步骤{i+1}: 未找到治疗技能，移开重试...")
-                            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
-                            while not self.should_stop:
-                                time.sleep(0.5)
-                                rect = self.window_manager.get_window_rect()
-                                if not rect:
-                                    break
-                                skill_pos = self._find_template(
-                                    skill_image, rect)
-                                if skill_pos:
-                                    break
-                                bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
-                            if not skill_pos or self.should_stop:
-                                break
+                            self._log(
+                                f"  步骤{i+1}: {self.RETRY_TIMEOUT:.0f}秒未找到治疗技能, 重启本轮")
+                            break
                         sx, sy, _ = skill_pos
                         if self.should_stop:
                             break
@@ -222,23 +257,16 @@ class LoopHealingEngine:
                         self._log(f"  步骤{i+1}: 点击治疗技能")
 
                     elif step['type'] == 'member':
-                        # 查找队员定位图片获取基准坐标
-                        member_pos = self._find_template(member_image, rect)
+                        # 查找队员定位图片 (限时重试)
+                        member_pos, rect = self._find_with_retry(
+                            member_image, hwnd, self.RETRY_TIMEOUT,
+                            label=f"步骤{i+1}")
+                        if self.should_stop:
+                            break
                         if not member_pos:
-                            self._log(f"  步骤{i+1}: 未找到队员定位，移开重试...")
-                            bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
-                            while not self.should_stop:
-                                time.sleep(0.5)
-                                rect = self.window_manager.get_window_rect()
-                                if not rect:
-                                    break
-                                member_pos = self._find_template(
-                                    member_image, rect)
-                                if member_pos:
-                                    break
-                                bg_input.post_move(hwnd, rect[0] + 50, rect[1] + 50)
-                            if not member_pos or self.should_stop:
-                                break
+                            self._log(
+                                f"  步骤{i+1}: {self.RETRY_TIMEOUT:.0f}秒未找到队员定位, 重启本轮")
+                            break
                         mx, my, _ = member_pos
                         ox = step.get('offset_x', 0)
                         oy = step.get('offset_y', 0)
