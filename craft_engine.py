@@ -111,6 +111,29 @@ class CraftEngine:
                 if self._check_stop():
                     break
 
+                # 7.5. 验证"开始制造"按钮出现, 否则在材料够的前提下无限重选
+                #     重选 = 重新调用 _try_select_and_place_materials, 内部已含
+                #     organize 兜底; 兜底也失败 (返回 False) 则中断整个 _craft_loop
+                if execute_button_path:
+                    button_visible = False
+                    while not self._check_stop():
+                        window_rect = self.window_manager.get_window_rect()
+                        if not window_rect:
+                            self._log("错误: 无法获取窗口坐标")
+                            break
+                        if self._find_template(execute_button_path, window_rect):
+                            button_visible = True
+                            break
+                        self._log("未找到开始制造按钮，重新选择材料...")
+                        if not self._try_select_and_place_materials(
+                                materials, all_mat_paths, recipe_dir,
+                                window_rect, organize_button_path,
+                                hwnd, click_pre_delay, click_interval,
+                                debug_first_scan=False):
+                            break
+                    if not button_visible:
+                        break
+
                 # 8. 点击执行按钮
                 self._log("点击执行...")
                 if execute_button_path:
