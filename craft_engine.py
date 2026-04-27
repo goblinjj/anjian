@@ -178,16 +178,21 @@ class CraftEngine:
                         click_attempt = 0
                         while not self._check_stop():
                             click_attempt += 1
+                            # 每轮重新取窗口坐标 (防窗口被拖动)
+                            window_rect = self.window_manager.get_window_rect()
+                            if not window_rect:
+                                self._log("错误: 无法获取窗口坐标")
+                                break
                             self._log(f"点击制造完成按钮(第{click_attempt}次)...")
                             self._click_template(completion_image_path, window_rect)
                             bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
                             time.sleep(0.5)
-                            # 确认按钮是否已消失
-                            still_found = self._find_template(
-                                completion_image_path, window_rect)
-                            if not still_found:
-                                self._log("确认: 完成按钮已消失")
-                                break
+                            # 连续 2 次都找不到才算真消失 (防黑帧/过渡帧 false-negative)
+                            if not self._find_template(completion_image_path, window_rect):
+                                time.sleep(0.3)
+                                if not self._find_template(completion_image_path, window_rect):
+                                    self._log("确认: 完成按钮已消失")
+                                    break
                             self._log("完成按钮仍存在，重新点击...")
                         self.success_count += 1
                         time.sleep(1.0)  # 等待画面恢复到背包界面
