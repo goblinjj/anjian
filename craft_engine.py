@@ -95,6 +95,23 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
+                # 2.5. 前置检查背包空格子, 无则整理 (确保制造产物有位置可放)
+                if organize_button_path and not self._check_stop():
+                    grid_chk, _ = self.backpack_reader.locate_grid(window_rect)
+                    if grid_chk:
+                        chk_slots = self.backpack_reader.scan_backpack(grid_chk)
+                        has_empty = any(s.is_empty for s in chk_slots)
+                        if not has_empty:
+                            self._log("背包无空格子，整理背包...")
+                            self._do_organize(organize_button_path, window_rect)
+                            window_rect = self.window_manager.get_window_rect()
+                            if not window_rect:
+                                self._log("错误: 无法获取窗口坐标")
+                                break
+
+                if self._check_stop():
+                    break
+
                 # 3-7. 选材并双击 (含 organize 兜底)
                 hwnd = self.window_manager.hwnd
                 all_mat_paths = [
@@ -157,11 +174,11 @@ class CraftEngine:
                         completion_image_path, window_rect, timeout=10
                     )
                     if completed and not self._check_stop():
-                        # 10. 点击完成按钮（循环确认直到按钮消失）
-                        for click_attempt in range(5):
-                            if self._check_stop():
-                                break
-                            self._log(f"点击制造完成按钮(第{click_attempt+1}次)...")
+                        # 10. 点击完成按钮（无限重试直到按钮消失或停止）
+                        click_attempt = 0
+                        while not self._check_stop():
+                            click_attempt += 1
+                            self._log(f"点击制造完成按钮(第{click_attempt}次)...")
                             self._click_template(completion_image_path, window_rect)
                             bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
                             time.sleep(0.5)
@@ -185,18 +202,6 @@ class CraftEngine:
 
                 if self._check_stop():
                     break
-
-                # 10. 检查背包是否还有空格子，没有则整理
-                if organize_button_path and not self._check_stop():
-                    grid_chk, _ = self.backpack_reader.locate_grid(window_rect)
-                    if grid_chk:
-                        chk_slots = self.backpack_reader.scan_backpack(grid_chk)
-                        has_empty = any(s.is_empty for s in chk_slots)
-                        if not has_empty:
-                            self._log("背包无空格子，整理背包...")
-                            self._do_organize(organize_button_path, window_rect)
-                            self._log("重新扫描背包...")
-                            continue
 
                 # 短暂间隔再开始下一轮
                 time.sleep(0.5)
