@@ -367,6 +367,11 @@ class CraftEngine:
 
         return True
 
+    # 残留按钮判定阈值: 默认 0.7 太松, 容易把同坐标的"开始制造"按钮 / HP 条
+    # 等相似 UI 像素误判成残留, 进而误点引发反复重选材料。残留按钮如果真在
+    # 屏上, 置信度通常接近 1.0; 边缘匹配 (0.7-0.85) 视为误报跳过。
+    STUCK_BUTTON_THRESHOLD = 0.9
+
     def _try_clear_stuck_completion_button(self, completion_image_path,
                                             window_rect):
         """如果检测到残留的"制造完成"按钮, 点一下并 sleep 等画面恢复。
@@ -381,7 +386,9 @@ class CraftEngine:
         """
         if not completion_image_path:
             return False
-        if not self._find_template(completion_image_path, window_rect):
+        if not self._find_template(
+                completion_image_path, window_rect,
+                threshold=self.STUCK_BUTTON_THRESHOLD):
             return False
         self._log("检测到残留的制造完成按钮, 先点掉再继续...")
         hwnd = self.window_manager.hwnd
