@@ -95,6 +95,14 @@ class CraftEngine:
                     self._log("错误: 无法获取窗口坐标")
                     break
 
+                # 2.3. 兜底: 上轮可能因黑帧/动画漏点制造完成按钮, 这里再扫一次
+                if self._try_clear_stuck_completion_button(
+                        completion_image_path, window_rect):
+                    window_rect = self.window_manager.get_window_rect()
+                    if not window_rect:
+                        self._log("错误: 无法获取窗口坐标")
+                        break
+
                 # 2.5. 前置检查背包空格子, 无则整理 (确保制造产物有位置可放)
                 if organize_button_path and not self._check_stop():
                     grid_chk, _ = self.backpack_reader.locate_grid(window_rect)
@@ -138,6 +146,10 @@ class CraftEngine:
                         if not window_rect:
                             self._log("错误: 无法获取窗口坐标")
                             break
+                        # 重选前再扫一次残留的制造完成按钮 (无限重试 = 无限补救机会)
+                        if self._try_clear_stuck_completion_button(
+                                completion_image_path, window_rect):
+                            continue
                         if self._find_template(execute_button_path, window_rect):
                             button_visible = True
                             break
@@ -355,11 +367,39 @@ class CraftEngine:
 
         return True
 
+    def _try_clear_stuck_completion_button(self, completion_image_path,
+                                            window_rect):
+        """如果检测到残留的"制造完成"按钮, 点一下并 sleep 等画面恢复。
+
+        步骤 9 的双次确认仍可能因连续黑帧 / 长动画 false-negative 漏点,
+        让游戏停在制作完成画面。本方法在每次选材前 (主循环顶部 + 7.5
+        重选 while 内部) 再扫一次, 把残留状态点掉再继续。
+
+        Returns:
+            bool: True = 找到并点了, 调用方应刷新 window_rect;
+                  False = 按钮不在屏上 / 未配置 completion_image_path。
+        """
+        if not completion_image_path:
+            return False
+        if not self._find_template(completion_image_path, window_rect):
+            return False
+        self._log("检测到残留的制造完成按钮, 先点掉再继续...")
+        hwnd = self.window_manager.hwnd
+        self._click_template(completion_image_path, window_rect)
+        bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
+        time.sleep(0.8)
+        return True
+
     def _do_organize(self, organize_button_path, window_rect):
         """执行一次整理背包操作"""
         hwnd = self.window_manager.hwnd
         self._log("整理背包: 打开背包...")
         bg_input.post_hotkey(hwnd, 'ctrl', 'e')
+        # PostMessage 不会更新真实键盘状态, 游戏 GetKeyState(VK_CONTROL)
+        # 拿不到 ctrl 按下 → 'e' 可能被聊天框当作纯文本输入吃进去。
+        # 这里补一次 backspace 兜底, 把可能漏进聊天的 'e' 删掉
+        # (背包/世界态通常不响应 backspace, 不会有副作用)
+        bg_input.post_key(hwnd, 'backspace')
         time.sleep(0.5)
         self._click_template(
             organize_button_path, window_rect,
@@ -367,6 +407,7 @@ class CraftEngine:
         time.sleep(1.0)
         self._log("整理背包: 关闭背包...")
         bg_input.post_hotkey(hwnd, 'ctrl', 'e')
+        bg_input.post_key(hwnd, 'backspace')
         time.sleep(0.5)
         bg_input.post_move(hwnd, window_rect[0] + 50, window_rect[1] + 50)
         time.sleep(0.5)
