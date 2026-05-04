@@ -209,20 +209,25 @@ class CraftAssistantGUI:
         self.hotkey_label.pack(side=tk.RIGHT)
 
         # ── 迷你模式区（初始隐藏）──
-        # 用 tk.Frame + 边框，无系统标题栏时便于辨认窗口边界
+        # 横排紧凑布局：[任务名] [开始/停止]，高度贴近标题栏
         self._mini_frame = tk.Frame(
             self.root, bg='#f0f0f0', relief='solid', borderwidth=1)
 
-        mini_inner = tk.Frame(self._mini_frame, bg='#f0f0f0', padx=10, pady=8)
+        mini_inner = tk.Frame(self._mini_frame, bg='#f0f0f0', padx=4, pady=1)
         mini_inner.pack(fill=tk.BOTH, expand=True)
 
-        self._mini_task_label = tk.Label(
-            mini_inner, text="", font=('', 11, 'bold'), bg='#f0f0f0')
-        self._mini_task_label.pack(pady=(0, 6))
-
         self._mini_toggle_btn = ttk.Button(
-            mini_inner, text="开始", width=10, command=self._mini_toggle)
-        self._mini_toggle_btn.pack()
+            mini_inner, text="开始", width=4, command=self._mini_toggle,
+            style='Mini.TButton')
+        self._mini_toggle_btn.pack(side=tk.RIGHT)
+
+        self._mini_task_label = tk.Label(
+            mini_inner, text="", font=('', 9), bg='#f0f0f0', anchor='w')
+        self._mini_task_label.pack(side=tk.LEFT, fill=tk.X, expand=True,
+                                    padx=(0, 4))
+
+        # ttk 按钮内边距收紧
+        ttk.Style().configure('Mini.TButton', padding=(2, 0))
 
         # 拖动 + 双击还原：绑定到按钮以外的所有控件
         for w in (self._mini_frame, mini_inner, self._mini_task_label):
@@ -662,6 +667,11 @@ class CraftAssistantGUI:
             return
         self._enter_mini_mode(task_name)
 
+    # 标题栏右侧最小化/最大化/关闭按钮的总宽度，预留出来不遮挡
+    _MINI_CLOSE_CLUSTER = 138
+    _MINI_W = 180
+    _MINI_H = 28
+
     def _enter_mini_mode(self, task_name):
         """进入迷你模式"""
         if self._in_mini_mode:
@@ -675,10 +685,36 @@ class CraftAssistantGUI:
         self._mini_task_label.config(text=task_name)
         self._update_mini_buttons()
 
-        self.root.minsize(180, 70)
-        self.root.geometry("220x80")
+        self.root.minsize(self._MINI_W, self._MINI_H)
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
+
+        pos = self._calc_mini_position(self._MINI_W, self._MINI_H)
+        if pos:
+            x, y = pos
+            self.root.geometry(
+                f"{self._MINI_W}x{self._MINI_H}+{x}+{y}")
+        else:
+            self.root.geometry(f"{self._MINI_W}x{self._MINI_H}")
+
+    def _calc_mini_position(self, mini_w, mini_h):
+        """贴到绑定窗口标题栏右侧（关闭按钮左边）
+
+        Returns:
+            (x, y) 或 None（未绑定/取不到 rect 时回落到当前位置）
+        """
+        try:
+            if not self.window_manager.is_window_valid():
+                return None
+            rect = self.window_manager.get_window_rect()
+        except Exception:
+            return None
+        if not rect:
+            return None
+        left, top, width, _ = rect
+        x = left + width - self._MINI_CLOSE_CLUSTER - mini_w
+        y = top + 1
+        return x, y
 
     def _exit_mini_mode(self):
         """退出迷你模式"""
