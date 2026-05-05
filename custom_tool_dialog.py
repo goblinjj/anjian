@@ -45,7 +45,7 @@ def step_summary(step):
     if t in _MOUSE_TYPE_TITLES:
         ox = step.get('offset_x', 0)
         oy = step.get('offset_y', 0)
-        return f"{_MOUSE_TYPE_TITLES[t]:<6}  偏移({ox}, {oy})"
+        return f"{_MOUSE_TYPE_TITLES[t]}  偏移({ox}, {oy})"
     if t == 'key_press':
         if step.get('input_mode') == 'text':
             return f"键盘输入  文本: \"{step.get('text', '')}\""
@@ -330,7 +330,7 @@ class ImageSearchStepDialog:
                  on_image_added=None, initial=None):
         self.result = None
         self._screenshot_cb = screenshot_callback
-        self._image_dir = image_dir
+        self._image_dir = os.path.abspath(image_dir)
         self._on_image_added = on_image_added or (lambda p: None)
         initial = initial or {}
 
