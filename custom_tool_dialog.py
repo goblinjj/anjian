@@ -652,10 +652,14 @@ class CustomToolDialog:
                       for it in self.step_tree.selection())
 
     def _img_dir(self):
-        """该工具图片专属子目录 (用当前编辑器里的名字, 截图实时落到这里)。
+        """该工具图片专属子目录 (截图实时落到这里)。
 
-        新建工具时, 名字可能还没填; 用临时目录避免空名问题。
+        编辑模式下始终用 original_name, 这样改名时新截图随老目录一起被
+        manager.save 搬走, 避免 os.rename(old, new) 因 new 已存在而 OSError。
+        新建模式下用当前名; 名字还没填时用 _unnamed_temp 临时目录。
         """
+        if self._original_name:
+            return self._manager.img_dir(self._original_name)
         name = self._manager.sanitize_name(self.name_var.get())
         if not name:
             return os.path.join(self._manager.tools_dir, '_unnamed_temp')
@@ -802,11 +806,12 @@ class CustomToolDialog:
                     # 先记下源绝对路径再搬, image_path 比较时用 abspath
                     abs_src = os.path.abspath(src)
                     os.replace(src, dst)
+                    abs_dst = os.path.abspath(dst)
                     for step in self._data['steps']:
                         if (step.get('type') == 'image_search'
                                 and os.path.abspath(
                                     step.get('image_path', '')) == abs_src):
-                            step['image_path'] = dst
+                            step['image_path'] = abs_dst
             try:
                 os.rmdir(temp_dir)
             except OSError:
