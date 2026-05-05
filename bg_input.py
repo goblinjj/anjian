@@ -27,6 +27,9 @@ WM_LBUTTONDBLCLK = 0x0203
 WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 MK_LBUTTON = 0x0001
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+MK_RBUTTON = 0x0002
 MAPVK_VK_TO_VSC = 0
 
 user32.PostMessageW.argtypes = [
@@ -167,3 +170,29 @@ def post_hotkey(hwnd, *keys, hold_time=0.05):
     for vk in reversed(vks):
         _post(hwnd, WM_KEYUP, vk, _key_lparam_up(vk))
         time.sleep(0.02)
+
+
+def post_right_click(hwnd, screen_x, screen_y, pre_delay=0.0, hold_time=0.05):
+    """右键单击 (MOVE → 前置延迟 → R-DOWN → 持续时间 → R-UP)。"""
+    cx, cy = _screen_to_client(hwnd, screen_x, screen_y)
+    lp = _pack_lparam(cx, cy)
+    _post(hwnd, WM_MOUSEMOVE, 0, lp)
+    if pre_delay > 0:
+        time.sleep(pre_delay)
+    _post(hwnd, WM_RBUTTONDOWN, MK_RBUTTON, lp)
+    time.sleep(hold_time)
+    _post(hwnd, WM_RBUTTONUP, 0, lp)
+
+
+def post_text(hwnd, text, char_interval=0.03):
+    """逐字符 post_key, 仅 ASCII 小写字母 / 数字 / 空格。
+
+    上层 (CustomToolDialog) 已经校验过非 ASCII / 大写字母, 这里只做兜底:
+    无法映射的字符直接跳过, 不抛异常打断序列。
+    """
+    for c in text:
+        try:
+            post_key(hwnd, c)
+        except ValueError:
+            continue
+        time.sleep(char_interval)
