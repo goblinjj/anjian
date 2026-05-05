@@ -23,6 +23,9 @@ from tool_dialog import (AutoEncounterDialog, LoopHealingDialog,
                          GetMaterialDialog, load_tool_config)
 from tool_scripts import AutoEncounterEngine, LoopHealingEngine, GetMaterialEngine
 from screenshot_util import take_screenshot
+from custom_tool_manager import CustomToolManager
+from custom_tool_engine import CustomToolEngine
+from custom_tool_dialog import CustomToolDialog
 
 
 # 工具描述信息
@@ -75,6 +78,8 @@ class CraftAssistantGUI:
         )
         self.hotkey_manager = HotkeyManager(self)
         self.get_material_engine = GetMaterialEngine(self.window_manager)
+        self.custom_tool_manager = CustomToolManager()
+        self._selected_custom_name = None
 
         # 创建界面
         self._create_widgets()
@@ -138,6 +143,10 @@ class CraftAssistantGUI:
         self.tree.insert(self._tool_node, 'end', text='获取材料',
                          values=('get_material',), tags=('tool',))
 
+        # 自定义工具分类
+        self._custom_node = self.tree.insert(
+            '', 'end', text='  自定义', open=True, tags=('category',))
+
         # 分类样式
         self.tree.tag_configure('category', font=('', 10, 'bold'))
 
@@ -145,13 +154,13 @@ class CraftAssistantGUI:
         btn_row = ttk.Frame(left_frame)
         btn_row.pack(fill=tk.X, pady=5)
         self.new_btn = ttk.Button(
-            btn_row, text="新建配方", width=8, command=self._new_recipe)
+            btn_row, text="新建配方", width=8, command=self._on_new)
         self.new_btn.pack(side=tk.LEFT, padx=2)
         self.edit_btn = ttk.Button(
             btn_row, text="编辑", width=6, command=self._on_edit)
         self.edit_btn.pack(side=tk.LEFT, padx=2)
         self.delete_btn = ttk.Button(
-            btn_row, text="删除", width=6, command=self._delete_recipe,
+            btn_row, text="删除", width=6, command=self._on_delete,
             state=tk.DISABLED)
         self.delete_btn.pack(side=tk.LEFT, padx=2)
 
@@ -240,14 +249,27 @@ class CraftAssistantGUI:
     # ── 分类列表 ──
 
     def _refresh_tree(self):
-        """刷新配方子项"""
-        # 清除旧配方节点
+        """刷新配方 + 自定义工具子项。"""
+        # 配方
         for child in self.tree.get_children(self._recipe_node):
             self.tree.delete(child)
-        # 重新插入
         for name in self.recipe_manager.list_recipes():
             self.tree.insert(
                 self._recipe_node, 'end', text=name, tags=('recipe',))
+        # 自定义工具
+        for child in self.tree.get_children(self._custom_node):
+            self.tree.delete(child)
+        for name in self.custom_tool_manager.list_tools():
+            try:
+                data = self.custom_tool_manager.load(name)
+                mode = data.get('mode', 'loop')
+            except Exception:
+                mode = '?'
+            self.tree.insert(
+                self._custom_node, 'end',
+                text=f'{name}   ({mode})',
+                values=(name,),
+                tags=('custom',))
 
     def _on_tree_select(self, event):
         """树列表选中事件"""
@@ -257,9 +279,13 @@ class CraftAssistantGUI:
         item = sel[0]
 
         # 点击分类根节点
-        if item in (self._recipe_node, self._tool_node):
-            self._selected_type = None
+        if item in (self._recipe_node, self._tool_node, self._custom_node):
+            if item == self._custom_node:
+                self._selected_type = 'custom_root'
+            else:
+                self._selected_type = None
             self._selected_tool_id = None
+            self._selected_custom_name = None
             self.selected_recipe = None
             self._update_buttons()
             self.info_frame.config(text="详情")
@@ -292,14 +318,26 @@ class CraftAssistantGUI:
             self._show_tool_info(tool_id)
             self._update_buttons()
 
+        elif parent == self._custom_node:
+            values = self.tree.item(item, 'values')
+            name = values[0] if values else ''
+            self._selected_type = 'custom'
+            self._selected_tool_id = None
+            self._selected_custom_name = name
+            self.selected_recipe = None
+            self._show_custom_tool_info(name)
+            self._update_buttons()
+
     def _update_buttons(self):
-        """根据选中类型更新按钮状态"""
+        """根据选中类型更新按钮状态。"""
         if self._selected_type == 'recipe':
+            self.new_btn.config(text="新建配方")
             self.edit_btn.config(text="编辑", state=tk.NORMAL)
             self.delete_btn.config(state=tk.NORMAL)
             self.start_btn.config(text="开始制造")
             self.info_frame.config(text="当前配方")
         elif self._selected_type == 'tool':
+            self.new_btn.config(text="新建配方")
             self.edit_btn.config(text="配置", state=tk.NORMAL)
             self.delete_btn.config(state=tk.DISABLED)
             if self._selected_tool_id == 'get_material':
@@ -307,7 +345,27 @@ class CraftAssistantGUI:
             else:
                 self.start_btn.config(text="开始执行")
             self.info_frame.config(text="当前工具")
+        elif self._selected_type == 'custom':
+            self.new_btn.config(text="新建自定义")
+            self.edit_btn.config(text="编辑", state=tk.NORMAL)
+            self.delete_btn.config(state=tk.NORMAL)
+            data = None
+            try:
+                data = self.custom_tool_manager.load(
+                    self._selected_custom_name)
+            except Exception:
+                pass
+            mode = (data or {}).get('mode', 'loop')
+            self.start_btn.config(
+                text="执行一次" if mode == 'once' else "开始执行")
+            self.info_frame.config(text="自定义工具")
+        elif self._selected_type == 'custom_root':
+            self.new_btn.config(text="新建自定义")
+            self.edit_btn.config(text="编辑", state=tk.DISABLED)
+            self.delete_btn.config(state=tk.DISABLED)
+            self.start_btn.config(text="开始")
         else:
+            self.new_btn.config(text="新建配方")
             self.edit_btn.config(text="编辑", state=tk.DISABLED)
             self.delete_btn.config(state=tk.DISABLED)
             self.start_btn.config(text="开始")
@@ -318,6 +376,8 @@ class CraftAssistantGUI:
             self._edit_recipe()
         elif self._selected_type == 'tool':
             self._configure_tool()
+        elif self._selected_type == 'custom':
+            self._edit_custom_tool()
 
     def _on_start(self):
         """统一开始按钮"""
@@ -325,6 +385,8 @@ class CraftAssistantGUI:
             self.start_craft()
         elif self._selected_type == 'tool':
             self._start_selected_tool()
+        elif self._selected_type == 'custom':
+            self._start_custom_tool()
 
     def _on_stop(self):
         """统一停止按钮"""
@@ -399,6 +461,31 @@ class CraftAssistantGUI:
 
         self.info_label.config(text='\n'.join(lines), foreground='black')
 
+    def _show_custom_tool_info(self, name):
+        """显示自定义工具详情。"""
+        try:
+            data = self.custom_tool_manager.load(name)
+        except Exception as e:
+            self.info_label.config(text=f"加载失败: {e}")
+            return
+        mode = data.get('mode', 'loop')
+        steps = data.get('steps', [])
+        desc = data.get('description', '')
+
+        from custom_tool_dialog import step_summary
+        lines = [
+            f"自定义工具: {name}",
+            f"模式: {'循环' if mode == 'loop' else '单次'}",
+        ]
+        if desc:
+            lines.append(f"说明: {desc}")
+        lines.append(f"步骤数: {len(steps)}")
+        for i, step in enumerate(steps[:8]):
+            lines.append(f"  #{i+1} {step_summary(step)}")
+        if len(steps) > 8:
+            lines.append(f"  ...还有 {len(steps) - 8} 步")
+        self.info_label.config(text='\n'.join(lines), foreground='black')
+
     # ── 窗口绑定 ──
 
     def _pick_window(self):
@@ -423,6 +510,13 @@ class CraftAssistantGUI:
 
     # ── 配方管理 ──
 
+    def _on_new(self):
+        """根据当前选中类型分发: 配方 / 自定义工具。"""
+        if self._selected_type in ('custom', 'custom_root'):
+            self._new_custom_tool()
+        else:
+            self._new_recipe()
+
     def _new_recipe(self):
         """新建配方"""
         dialog = RecipeDialog(
@@ -441,6 +535,12 @@ class CraftAssistantGUI:
             self.selected_recipe = dialog.result
             self._refresh_tree()
             self._show_recipe_info(self.selected_recipe)
+
+    def _on_delete(self):
+        if self._selected_type == 'recipe':
+            self._delete_recipe()
+        elif self._selected_type == 'custom':
+            self._delete_custom_tool()
 
     def _delete_recipe(self):
         """删除配方"""
@@ -541,6 +641,40 @@ class CraftAssistantGUI:
                 self.hotkey_manager.reload_get_material_hotkey()
                 self._show_tool_info('get_material')
 
+    # ── 自定义工具 ──
+
+    def _new_custom_tool(self):
+        dialog = CustomToolDialog(
+            self.root, self.custom_tool_manager, self._screenshot_region)
+        if dialog.result:
+            self._refresh_tree()
+
+    def _edit_custom_tool(self):
+        if not self._selected_custom_name:
+            return
+        dialog = CustomToolDialog(
+            self.root, self.custom_tool_manager, self._screenshot_region,
+            original_name=self._selected_custom_name)
+        if dialog.result:
+            self._selected_custom_name = dialog.result
+            self._refresh_tree()
+            self._show_custom_tool_info(self._selected_custom_name)
+
+    def _delete_custom_tool(self):
+        if not self._selected_custom_name:
+            return
+        name = self._selected_custom_name
+        if not messagebox.askyesno(
+                "确认", f"确定删除自定义工具「{name}」? \n图片模板也会一并删除。"):
+            return
+        self.custom_tool_manager.delete(name)
+        self._selected_custom_name = None
+        self._selected_type = None
+        self.info_label.config(text="请选择配方或工具", foreground='gray')
+        self.info_frame.config(text="详情")
+        self._refresh_tree()
+        self._update_buttons()
+
     def _start_selected_tool(self):
         """启动当前选中的工具"""
         if not self.window_manager.is_window_valid():
@@ -614,6 +748,36 @@ class CraftAssistantGUI:
             self._update_mini_buttons()
         else:
             self._enter_mini_mode("工具: 循环医疗")
+        self._monitor_tool_engine()
+
+    def _start_custom_tool(self):
+        """启动选中的自定义工具。"""
+        if not self.window_manager.is_window_valid():
+            messagebox.showwarning("提示", "请先绑定游戏窗口")
+            return
+        if self.is_running or self._active_tool_engine:
+            messagebox.showwarning("提示", "请先停止当前任务")
+            return
+        if not self._selected_custom_name:
+            return
+        try:
+            tool = self.custom_tool_manager.load(self._selected_custom_name)
+        except Exception as e:
+            messagebox.showerror("错误", f"加载工具失败: {e}")
+            return
+
+        engine = CustomToolEngine(self.window_manager, self._log_message)
+        engine.start(tool)
+        self._active_tool_engine = engine
+        self._tool_stop_callback = self._stop_tool
+        self.start_btn.config(state=tk.DISABLED)
+        self.stop_btn.config(state=tk.NORMAL)
+        task_name = f"自定义: {self._selected_custom_name}"
+        if self._in_mini_mode:
+            self._mini_task_label.config(text=task_name)
+            self._update_mini_buttons()
+        else:
+            self._enter_mini_mode(task_name)
         self._monitor_tool_engine()
 
     def _stop_tool(self):
