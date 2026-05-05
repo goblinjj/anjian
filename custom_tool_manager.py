@@ -24,7 +24,7 @@ class CustomToolManager:
         """去掉非法字符并 trim, 返回安全名 (空字符串表示无效)。"""
         if not name:
             return ''
-        cleaned = _INVALID_CHARS.sub('', name).strip()
+        cleaned = _INVALID_CHARS.sub('', name).strip().rstrip('. ')
         return cleaned
 
     def _json_path(self, name):
@@ -82,7 +82,7 @@ class CustomToolManager:
                 if step.get('type') == 'image_search':
                     p = step.get('image_path', '')
                     if p.startswith(old_dir + os.sep) or p.startswith(old_dir + '/'):
-                        step['image_path'] = p.replace(old_dir, new_dir, 1)
+                        step['image_path'] = new_dir + p[len(old_dir):]
             old_json = self._json_path(original_name)
             if os.path.isfile(old_json):
                 os.remove(old_json)
