@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""自定义工具编辑对话框 + 8 种步骤的子编辑器。"""
+
+import os
+import time
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+# 单键 Combobox 候选 (按键 alias 沿用 bg_input._SPECIAL_VK)
+_SINGLE_KEY_PRESETS = [
+    'enter', 'space', 'tab', 'esc', 'backspace',
+    'delete', 'up', 'down', 'left', 'right',
+    'home', 'end',
+    'f1', 'f2', 'f3', 'f4', 'f5', 'f6',
+    'f7', 'f8', 'f9', 'f10', 'f11', 'f12',
+]
+
+_MOUSE_TYPE_TITLES = {
+    'mouse_move': '鼠标移动',
+    'mouse_click': '鼠标左键',
+    'mouse_right_click': '鼠标右键',
+    'mouse_double_click': '鼠标双击',
+}
+
+_IMAGE_ACTION_LABELS = [
+    ('click', '左键单击'),
+    ('double_click', '左键双击'),
+    ('right_click', '右键单击'),
+    ('move', '仅移动'),
+    ('none', '什么也不做'),
+]
+
+_IMAGE_NOT_FOUND_LABELS = [
+    ('skip', '跳过本步'),
+    ('retry_skip', '重试后跳过本步'),
+    ('retry_stop', '重试后停止整个工具'),
+]
+
+
+def step_summary(step):
+    """生成 #N 行右半部分的摘要文本 (不含 #N 前缀)。"""
+    t = step.get('type')
+    if t in _MOUSE_TYPE_TITLES:
+        ox = step.get('offset_x', 0)
+        oy = step.get('offset_y', 0)
+        return f"{_MOUSE_TYPE_TITLES[t]:<6}  偏移({ox}, {oy})"
+    if t == 'key_press':
+        if step.get('input_mode') == 'text':
+            return f"键盘输入  文本: \"{step.get('text', '')}\""
+        return f"键盘输入  单键: {step.get('key', '')}"
+    if t == 'hotkey':
+        return f"组合键    {' + '.join(step.get('keys', []))}"
+    if t == 'image_search':
+        img = os.path.basename(step.get('image_path', '')) or '?'
+        on_found = dict(_IMAGE_ACTION_LABELS).get(
+            step.get('on_found', 'click'), '?')
+        on_nf = dict(_IMAGE_NOT_FOUND_LABELS).get(
+            step.get('on_not_found', 'skip'), '?')
+        ox = step.get('offset_x', 0)
+        oy = step.get('offset_y', 0)
+        return f"图片查询  {img}  找到→{on_found} 偏移({ox},{oy})  未找到→{on_nf}"
+    if t == 'wait':
+        return f"等待      {step.get('ms', 500)} ms"
+    return f"<未知步骤 {t}>"
+
+
+class MouseStepDialog:
+    """鼠标移动 / 左键 / 右键 / 双击 共享的偏移编辑对话框。"""
+
+    def __init__(self, parent, step_type, initial=None):
+        self.result = None
+        self._step_type = step_type
+        title = _MOUSE_TYPE_TITLES.get(step_type, '鼠标动作')
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title(f"编辑[{title}]")
+        self.dialog.geometry("320x140")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        initial = initial or {}
+        frame = ttk.Frame(self.dialog, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X, pady=2)
+        ttk.Label(row, text="X 偏移:", width=8).pack(side=tk.LEFT)
+        self.x_var = tk.IntVar(value=initial.get('offset_x', 0))
+        ttk.Spinbox(row, from_=-2000, to=2000, increment=10,
+                    textvariable=self.x_var, width=8).pack(side=tk.LEFT)
+
+        row2 = ttk.Frame(frame)
+        row2.pack(fill=tk.X, pady=2)
+        ttk.Label(row2, text="Y 偏移:", width=8).pack(side=tk.LEFT)
+        self.y_var = tk.IntVar(value=initial.get('offset_y', 0))
+        ttk.Spinbox(row2, from_=-2000, to=2000, increment=10,
+                    textvariable=self.y_var, width=8).pack(side=tk.LEFT)
+
+        ttk.Label(frame, text="(相对游戏窗口中心, 正X右/正Y下)",
+                  foreground='gray').pack(anchor=tk.W, pady=(4, 0))
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(btn_row, text="确定",
+                   command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消",
+                   command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        self.dialog.wait_window()
+
+    def _ok(self):
+        self.result = {
+            'type': self._step_type,
+            'offset_x': self.x_var.get(),
+            'offset_y': self.y_var.get(),
+        }
+        self.dialog.destroy()
+
+
+class KeyPressStepDialog:
+    """键盘输入: 单键 或 ASCII 文本串。"""
+
+    def __init__(self, parent, initial=None):
+        self.result = None
+        initial = initial or {}
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑[键盘输入]")
+        self.dialog.geometry("420x260")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        frame = ttk.Frame(self.dialog, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # 模式切换
+        mode_row = ttk.Frame(frame)
+        mode_row.pack(fill=tk.X)
+        ttk.Label(mode_row, text="模式:").pack(side=tk.LEFT)
+        self.mode_var = tk.StringVar(
+            value=initial.get('input_mode', 'single'))
+        ttk.Radiobutton(mode_row, text="单键", value='single',
+                        variable=self.mode_var,
+                        command=self._refresh_mode).pack(side=tk.LEFT, padx=8)
+        ttk.Radiobutton(mode_row, text="文本串", value='text',
+                        variable=self.mode_var,
+                        command=self._refresh_mode).pack(side=tk.LEFT)
+
+        # 单键面板
+        self.single_frame = ttk.LabelFrame(frame, text="单键", padding=8)
+        ttk.Label(self.single_frame, text="按键:").pack(side=tk.LEFT)
+        self.key_var = tk.StringVar(value=initial.get('key', 'enter'))
+        ttk.Combobox(self.single_frame, textvariable=self.key_var,
+                     values=_SINGLE_KEY_PRESETS, width=14).pack(
+            side=tk.LEFT, padx=5)
+
+        # 文本面板
+        self.text_frame = ttk.LabelFrame(frame, text="文本串", padding=8)
+        text_row = ttk.Frame(self.text_frame)
+        text_row.pack(fill=tk.X)
+        ttk.Label(text_row, text="文本:").pack(side=tk.LEFT)
+        self.text_var = tk.StringVar(value=initial.get('text', ''))
+        ttk.Entry(text_row, textvariable=self.text_var, width=30).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(self.text_frame, text="仅 ASCII (不支持中文/大写)",
+                  foreground='gray').pack(anchor=tk.W, pady=(4, 0))
+        interval_row = ttk.Frame(self.text_frame)
+        interval_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(interval_row, text="字间隔:").pack(side=tk.LEFT)
+        self.interval_var = tk.IntVar(
+            value=initial.get('char_interval_ms', 30))
+        ttk.Spinbox(interval_row, from_=10, to=500, increment=10,
+                    textvariable=self.interval_var, width=8).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(interval_row, text="ms").pack(side=tk.LEFT)
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
+        ttk.Button(btn_row, text="确定",
+                   command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消",
+                   command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        self._refresh_mode()
+        self.dialog.wait_window()
+
+    def _refresh_mode(self):
+        if self.mode_var.get() == 'single':
+            self.text_frame.pack_forget()
+            self.single_frame.pack(fill=tk.X, pady=8)
+        else:
+            self.single_frame.pack_forget()
+            self.text_frame.pack(fill=tk.X, pady=8)
+
+    def _ok(self):
+        mode = self.mode_var.get()
+        if mode == 'single':
+            key = self.key_var.get().strip()
+            if not key:
+                messagebox.showwarning("提示", "请填写按键名",
+                                       parent=self.dialog)
+                return
+            self.result = {'type': 'key_press',
+                           'input_mode': 'single', 'key': key}
+        else:
+            text = self.text_var.get()
+            if not text:
+                messagebox.showwarning("提示", "文本不能为空",
+                                       parent=self.dialog)
+                return
+            for ch in text:
+                if ord(ch) > 127:
+                    messagebox.showwarning(
+                        "提示", f"文本含非 ASCII 字符: {ch}",
+                        parent=self.dialog)
+                    return
+                if 'A' <= ch <= 'Z':
+                    messagebox.showwarning(
+                        "提示", f"暂不支持大写字母: {ch} (请改用小写)",
+                        parent=self.dialog)
+                    return
+            self.result = {
+                'type': 'key_press', 'input_mode': 'text',
+                'text': text, 'char_interval_ms': self.interval_var.get()}
+        self.dialog.destroy()
+
+
+class HotkeyStepDialog:
+    """组合键, 输入框 + 录制按钮 (复用 keyboard.read_hotkey)。"""
+
+    def __init__(self, parent, initial=None):
+        self.result = None
+        initial = initial or {}
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑[组合键]")
+        self.dialog.geometry("380x150")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        frame = ttk.Frame(self.dialog, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="组合键:").pack(side=tk.LEFT)
+        keys_init = '+'.join(initial.get('keys', []))
+        self.combo_var = tk.StringVar(value=keys_init)
+        ttk.Entry(row, textvariable=self.combo_var, width=20).pack(
+            side=tk.LEFT, padx=5)
+        self.record_btn = ttk.Button(row, text="录制", width=6,
+                                     command=self._start_record)
+        self.record_btn.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(frame, text="例: ctrl+c / alt+f4 / ctrl+shift+s",
+                  foreground='gray').pack(anchor=tk.W, pady=(8, 0))
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, pady=(10, 0))
+        ttk.Button(btn_row, text="确定",
+                   command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消",
+                   command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        self._recording = False
+        self.dialog.wait_window()
+
+    def _start_record(self):
+        if self._recording:
+            return
+        self._recording = True
+        self.record_btn.config(text="按键中...", state=tk.DISABLED)
+        import threading
+        threading.Thread(target=self._record_thread, daemon=True).start()
+
+    def _record_thread(self):
+        try:
+            import keyboard
+            key = keyboard.read_hotkey(suppress=False)
+            self.dialog.after(0, self._on_recorded, key)
+        except Exception:
+            self.dialog.after(0, self._on_record_failed)
+
+    def _on_recorded(self, key):
+        self._recording = False
+        self.combo_var.set(key)
+        self.record_btn.config(text="录制", state=tk.NORMAL)
+
+    def _on_record_failed(self):
+        self._recording = False
+        self.record_btn.config(text="录制", state=tk.NORMAL)
+
+    def _ok(self):
+        raw = self.combo_var.get().strip().lower()
+        if not raw:
+            messagebox.showwarning("提示", "组合键不能为空",
+                                   parent=self.dialog)
+            return
+        keys = [k.strip() for k in raw.split('+') if k.strip()]
+        if len(keys) < 2:
+            messagebox.showwarning(
+                "提示", "组合键至少要有 2 个键 (单键请用'键盘输入'步骤)",
+                parent=self.dialog)
+            return
+        # 校验每个键能被 bg_input 识别
+        import bg_input
+        for k in keys:
+            try:
+                bg_input._vk_of(k)
+            except ValueError:
+                messagebox.showwarning(
+                    "提示", f"无法识别的按键: {k}", parent=self.dialog)
+                return
+        self.result = {'type': 'hotkey', 'keys': keys}
+        self.dialog.destroy()
+
+
+class ImageSearchStepDialog:
+    """图片查询: 图片模板 + 找到后动作 + 找不到处理。
+
+    Args:
+        screenshot_callback(save_path) -> bool: 截图回调, 复用 main_gui 的
+        image_dir: 该工具的图片专属子目录 (相对路径)
+        on_image_added(path): 父对话框收集本次会话新增的图片路径以便取消时清理
+    """
+
+    def __init__(self, parent, screenshot_callback, image_dir,
+                 on_image_added=None, initial=None):
+        self.result = None
+        self._screenshot_cb = screenshot_callback
+        self._image_dir = image_dir
+        self._on_image_added = on_image_added or (lambda p: None)
+        initial = initial or {}
+
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑[图片查询]")
+        self.dialog.geometry("520x440")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        main = ttk.Frame(self.dialog, padding=12)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        # 图片模板
+        img_frame = ttk.LabelFrame(main, text="图片模板", padding=8)
+        img_frame.pack(fill=tk.X, pady=(0, 8))
+        self._image_path = initial.get('image_path', '')
+        self.img_status = ttk.Label(
+            img_frame, text=self._format_img_status())
+        self.img_status.pack(side=tk.LEFT)
+        ttk.Button(img_frame, text="截图", width=6,
+                   command=self._capture).pack(side=tk.RIGHT, padx=2)
+
+        # 找到后
+        found_frame = ttk.LabelFrame(main, text="找到后动作", padding=8)
+        found_frame.pack(fill=tk.X, pady=(0, 8))
+        action_row = ttk.Frame(found_frame)
+        action_row.pack(fill=tk.X)
+        ttk.Label(action_row, text="动作:").pack(side=tk.LEFT)
+        self.action_var = tk.StringVar(
+            value=dict(_IMAGE_ACTION_LABELS).get(
+                initial.get('on_found', 'click'), '左键单击'))
+        ttk.Combobox(action_row, textvariable=self.action_var,
+                     values=[label for _, label in _IMAGE_ACTION_LABELS],
+                     state='readonly', width=12).pack(side=tk.LEFT, padx=5)
+        offset_row = ttk.Frame(found_frame)
+        offset_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(offset_row, text="偏移 X:").pack(side=tk.LEFT)
+        self.ox_var = tk.IntVar(value=initial.get('offset_x', 0))
+        ttk.Spinbox(offset_row, from_=-1000, to=1000, increment=5,
+                    textvariable=self.ox_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(offset_row, text="Y:").pack(side=tk.LEFT, padx=(10, 0))
+        self.oy_var = tk.IntVar(value=initial.get('offset_y', 0))
+        ttk.Spinbox(offset_row, from_=-1000, to=1000, increment=5,
+                    textvariable=self.oy_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(offset_row, text="(相对匹配中心)",
+                  foreground='gray').pack(side=tk.LEFT, padx=5)
+
+        # 找不到
+        nf_frame = ttk.LabelFrame(main, text="找不到时", padding=8)
+        nf_frame.pack(fill=tk.X, pady=(0, 8))
+        nf_row = ttk.Frame(nf_frame)
+        nf_row.pack(fill=tk.X)
+        ttk.Label(nf_row, text="处理:").pack(side=tk.LEFT)
+        self.nf_var = tk.StringVar(
+            value=dict(_IMAGE_NOT_FOUND_LABELS).get(
+                initial.get('on_not_found', 'skip'), '跳过本步'))
+        ttk.Combobox(nf_row, textvariable=self.nf_var,
+                     values=[label for _, label in _IMAGE_NOT_FOUND_LABELS],
+                     state='readonly', width=20).pack(side=tk.LEFT, padx=5)
+
+        retry_row = ttk.Frame(nf_frame)
+        retry_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(retry_row, text="重试时长:").pack(side=tk.LEFT)
+        self.retry_var = tk.DoubleVar(
+            value=initial.get('retry_seconds', 3.0))
+        ttk.Spinbox(retry_row, from_=0.5, to=30.0, increment=0.5,
+                    textvariable=self.retry_var, width=7).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(retry_row, text="秒").pack(side=tk.LEFT)
+        ttk.Label(retry_row, text="匹配阈值:").pack(side=tk.LEFT, padx=(15, 0))
+        self.threshold_var = tk.DoubleVar(
+            value=initial.get('threshold', 0.7))
+        ttk.Spinbox(retry_row, from_=0.5, to=0.95, increment=0.05,
+                    textvariable=self.threshold_var, width=6).pack(
+            side=tk.LEFT, padx=5)
+
+        # 按钮
+        btn_row = ttk.Frame(main)
+        btn_row.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(btn_row, text="确定",
+                   command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消",
+                   command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        self.dialog.wait_window()
+
+    def _format_img_status(self):
+        if self._image_path and os.path.exists(self._image_path):
+            return f"已设置 ✓  {os.path.basename(self._image_path)}"
+        return "未设置 ✗"
+
+    def _capture(self):
+        os.makedirs(self._image_dir, exist_ok=True)
+        save_path = os.path.join(
+            self._image_dir, f"img_{int(time.time()*1000)}.png")
+        self.dialog.grab_release()
+        self.dialog.withdraw()
+        ok = self._screenshot_cb(save_path)
+        self.dialog.deiconify()
+        self.dialog.grab_set()
+        if ok and os.path.exists(save_path):
+            self._image_path = save_path
+            self._on_image_added(save_path)
+            self.img_status.config(text=self._format_img_status())
+
+    def _ok(self):
+        if not self._image_path or not os.path.exists(self._image_path):
+            messagebox.showwarning("提示", "请先截图设置图片模板",
+                                   parent=self.dialog)
+            return
+        # 中文 label → 英文 enum 反查
+        action_label_to_id = {label: id_ for id_, label in _IMAGE_ACTION_LABELS}
+        nf_label_to_id = {label: id_ for id_, label in _IMAGE_NOT_FOUND_LABELS}
+        self.result = {
+            'type': 'image_search',
+            'image_path': self._image_path,
+            'offset_x': self.ox_var.get(),
+            'offset_y': self.oy_var.get(),
+            'on_found': action_label_to_id.get(self.action_var.get(), 'click'),
+            'on_not_found': nf_label_to_id.get(self.nf_var.get(), 'skip'),
+            'retry_seconds': float(self.retry_var.get()),
+            'threshold': float(self.threshold_var.get()),
+        }
+        self.dialog.destroy()
+
+
+class WaitStepDialog:
+    def __init__(self, parent, initial=None):
+        self.result = None
+        initial = initial or {}
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("编辑[等待]")
+        self.dialog.geometry("280x110")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        frame = ttk.Frame(self.dialog, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        row = ttk.Frame(frame)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="等待时间:").pack(side=tk.LEFT)
+        self.ms_var = tk.IntVar(value=initial.get('ms', 500))
+        ttk.Spinbox(row, from_=50, to=30000, increment=50,
+                    textvariable=self.ms_var, width=8).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Label(row, text="ms (50 ~ 30000)").pack(side=tk.LEFT)
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(fill=tk.X, pady=(15, 0))
+        ttk.Button(btn_row, text="确定",
+                   command=self._ok).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_row, text="取消",
+                   command=self.dialog.destroy).pack(side=tk.RIGHT)
+
+        self.dialog.wait_window()
+
+    def _ok(self):
+        self.result = {'type': 'wait', 'ms': self.ms_var.get()}
+        self.dialog.destroy()
