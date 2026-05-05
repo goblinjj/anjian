@@ -495,3 +495,348 @@ class WaitStepDialog:
     def _ok(self):
         self.result = {'type': 'wait', 'ms': self.ms_var.get()}
         self.dialog.destroy()
+
+
+class CustomToolDialog:
+    """自定义工具的新建/编辑对话框。
+
+    Args:
+        parent: 主窗口
+        manager: CustomToolManager
+        screenshot_callback(path) -> bool: 截图回调
+        original_name: 编辑模式下的原工具名; 新建时为 None
+    Result:
+        self.result: 保存后的工具名 (str), 或 None (取消)
+    """
+
+    def __init__(self, parent, manager, screenshot_callback,
+                 original_name=None):
+        self.result = None
+        self._manager = manager
+        self._screenshot_cb = screenshot_callback
+        self._original_name = original_name
+        # 取消时要清理的本次会话新截图
+        self._pending_images = []
+
+        # 加载初始数据
+        if original_name:
+            self._data = manager.load(original_name)
+        else:
+            self._data = {
+                'version': '1.0', 'name': '', 'mode': 'loop',
+                'description': '', 'steps': []
+            }
+
+        self.dialog = tk.Toplevel(parent)
+        title = f"编辑自定义工具: {original_name}" if original_name \
+            else "新建自定义工具"
+        self.dialog.title(title)
+        self.dialog.geometry("580x640")
+        self.dialog.minsize(500, 500)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        self.dialog.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        self._create_widgets()
+        self._refresh_step_list()
+        self.dialog.wait_window()
+
+    def _create_widgets(self):
+        main = ttk.Frame(self.dialog, padding=12)
+        main.pack(fill=tk.BOTH, expand=True)
+
+        # 基本信息
+        info = ttk.LabelFrame(main, text="基本信息", padding=8)
+        info.pack(fill=tk.X, pady=(0, 8))
+
+        n_row = ttk.Frame(info)
+        n_row.pack(fill=tk.X, pady=2)
+        ttk.Label(n_row, text="名称:", width=8).pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=self._data.get('name', ''))
+        ttk.Entry(n_row, textvariable=self.name_var, width=30).pack(
+            side=tk.LEFT, padx=5)
+
+        m_row = ttk.Frame(info)
+        m_row.pack(fill=tk.X, pady=2)
+        ttk.Label(m_row, text="模式:", width=8).pack(side=tk.LEFT)
+        self.mode_var = tk.StringVar(value=self._data.get('mode', 'loop'))
+        ttk.Radiobutton(m_row, text="循环", value='loop',
+                        variable=self.mode_var).pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(m_row, text="单次", value='once',
+                        variable=self.mode_var).pack(side=tk.LEFT)
+
+        d_row = ttk.Frame(info)
+        d_row.pack(fill=tk.X, pady=2)
+        ttk.Label(d_row, text="说明:", width=8).pack(side=tk.LEFT)
+        self.desc_var = tk.StringVar(
+            value=self._data.get('description', ''))
+        ttk.Entry(d_row, textvariable=self.desc_var, width=40).pack(
+            side=tk.LEFT, padx=5)
+
+        # 步骤序列
+        step_frame = ttk.LabelFrame(
+            main, text="步骤序列 (按顺序执行)", padding=8)
+        step_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        list_frame = ttk.Frame(step_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.step_tree = ttk.Treeview(
+            list_frame, show='tree', selectmode='extended', height=14)
+        scroll = ttk.Scrollbar(
+            list_frame, orient=tk.VERTICAL, command=self.step_tree.yview)
+        self.step_tree.configure(yscrollcommand=scroll.set)
+        self.step_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.step_tree.bind('<Double-1>', lambda e: self._edit_step())
+
+        # 操作按钮行
+        op_row = ttk.Frame(step_frame)
+        op_row.pack(fill=tk.X, pady=(6, 0))
+
+        # 添加菜单
+        self._add_mb = ttk.Menubutton(op_row, text="+ 添加步骤", width=12)
+        menu = tk.Menu(self._add_mb, tearoff=0)
+        for label, st_type in [
+            ('鼠标移动', 'mouse_move'),
+            ('鼠标左键', 'mouse_click'),
+            ('鼠标右键', 'mouse_right_click'),
+            ('鼠标双击', 'mouse_double_click'),
+            ('键盘输入', 'key_press'),
+            ('组合键', 'hotkey'),
+            ('图片查询', 'image_search'),
+            ('等待', 'wait'),
+        ]:
+            menu.add_command(
+                label=label,
+                command=lambda t=st_type: self._add_step(t))
+        self._add_mb['menu'] = menu
+        self._add_mb.pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(op_row, text="编辑", width=6,
+                   command=self._edit_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(op_row, text="删除", width=6,
+                   command=self._delete_step).pack(side=tk.LEFT, padx=2)
+        ttk.Button(op_row, text="上移", width=6,
+                   command=self._move_up).pack(side=tk.LEFT, padx=2)
+        ttk.Button(op_row, text="下移", width=6,
+                   command=self._move_down).pack(side=tk.LEFT, padx=2)
+        ttk.Button(op_row, text="复制", width=6,
+                   command=self._duplicate_step).pack(side=tk.LEFT, padx=2)
+
+        # 底部确定/取消
+        bottom = ttk.Frame(main)
+        bottom.pack(fill=tk.X)
+        ttk.Button(bottom, text="确定",
+                   command=self._save).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(bottom, text="取消",
+                   command=self._cancel).pack(side=tk.RIGHT)
+
+    def _refresh_step_list(self):
+        prev_indices = sorted(
+            self.step_tree.index(it) for it in self.step_tree.selection())
+        for child in self.step_tree.get_children():
+            self.step_tree.delete(child)
+        for i, step in enumerate(self._data['steps']):
+            text = f"#{i+1}  {step_summary(step)}"
+            self.step_tree.insert('', 'end', iid=str(i), text=text)
+        # 恢复选中
+        all_iids = self.step_tree.get_children()
+        valid_indices = [i for i in prev_indices if i < len(all_iids)]
+        if valid_indices:
+            self.step_tree.selection_set([all_iids[i] for i in valid_indices])
+
+    def _selected_indices(self):
+        """返回选中行的索引列表 (升序)。"""
+        return sorted(self.step_tree.index(it)
+                      for it in self.step_tree.selection())
+
+    def _img_dir(self):
+        """该工具图片专属子目录 (用当前编辑器里的名字, 截图实时落到这里)。
+
+        新建工具时, 名字可能还没填; 用临时目录避免空名问题。
+        """
+        name = self._manager.sanitize_name(self.name_var.get())
+        if not name:
+            return os.path.join(self._manager.tools_dir, '_unnamed_temp')
+        return self._manager.img_dir(name)
+
+    def _add_step(self, step_type):
+        # 计算插入位置
+        sel = self._selected_indices()
+        insert_at = (sel[-1] + 1) if sel else len(self._data['steps'])
+
+        new_step = self._open_step_dialog(step_type, initial=None)
+        if not new_step:
+            return
+        self._data['steps'].insert(insert_at, new_step)
+        self._refresh_step_list()
+        # 选中新行
+        all_iids = self.step_tree.get_children()
+        if insert_at < len(all_iids):
+            self.step_tree.selection_set(all_iids[insert_at])
+
+    def _open_step_dialog(self, step_type, initial):
+        """根据类型派发到子对话框, 返回 step dict 或 None。"""
+        if step_type in _MOUSE_TYPE_TITLES:
+            d = MouseStepDialog(self.dialog, step_type, initial)
+            return d.result
+        if step_type == 'key_press':
+            d = KeyPressStepDialog(self.dialog, initial)
+            return d.result
+        if step_type == 'hotkey':
+            d = HotkeyStepDialog(self.dialog, initial)
+            return d.result
+        if step_type == 'image_search':
+            d = ImageSearchStepDialog(
+                self.dialog, self._screenshot_cb,
+                self._img_dir(), self._pending_images.append, initial)
+            return d.result
+        if step_type == 'wait':
+            d = WaitStepDialog(self.dialog, initial)
+            return d.result
+        return None
+
+    def _edit_step(self):
+        sel = self._selected_indices()
+        if len(sel) != 1:
+            return  # 多选时编辑禁用
+        idx = sel[0]
+        step = self._data['steps'][idx]
+        new_step = self._open_step_dialog(step['type'], initial=step)
+        if not new_step:
+            return
+        self._data['steps'][idx] = new_step
+        self._refresh_step_list()
+        all_iids = self.step_tree.get_children()
+        self.step_tree.selection_set(all_iids[idx])
+
+    def _delete_step(self):
+        sel = self._selected_indices()
+        if not sel:
+            return
+        # 倒序删, 避免索引漂移
+        for i in reversed(sel):
+            self._data['steps'].pop(i)
+        self._refresh_step_list()
+
+    def _move_up(self):
+        sel = self._selected_indices()
+        if not sel or sel[0] == 0:
+            return
+        is_contiguous = (sel[-1] - sel[0] + 1) == len(sel)
+        steps = self._data['steps']
+        if is_contiguous:
+            block = steps[sel[0]:sel[-1]+1]
+            del steps[sel[0]:sel[-1]+1]
+            steps.insert(sel[0]-1, block[0])
+            for k, st in enumerate(block[1:], start=1):
+                steps.insert(sel[0]-1+k, st)
+            new_sel = [i-1 for i in sel]
+        else:
+            i = sel[0]
+            steps[i-1], steps[i] = steps[i], steps[i-1]
+            new_sel = [i-1]
+        self._refresh_step_list()
+        all_iids = self.step_tree.get_children()
+        self.step_tree.selection_set([all_iids[i] for i in new_sel])
+
+    def _move_down(self):
+        sel = self._selected_indices()
+        if not sel or sel[-1] == len(self._data['steps']) - 1:
+            return
+        is_contiguous = (sel[-1] - sel[0] + 1) == len(sel)
+        steps = self._data['steps']
+        if is_contiguous:
+            block = steps[sel[0]:sel[-1]+1]
+            del steps[sel[0]:sel[-1]+1]
+            steps.insert(sel[0]+1, block[0])
+            for k, st in enumerate(block[1:], start=1):
+                steps.insert(sel[0]+1+k, st)
+            new_sel = [i+1 for i in sel]
+        else:
+            i = sel[0]
+            steps[i], steps[i+1] = steps[i+1], steps[i]
+            new_sel = [i+1]
+        self._refresh_step_list()
+        all_iids = self.step_tree.get_children()
+        self.step_tree.selection_set([all_iids[i] for i in new_sel])
+
+    def _duplicate_step(self):
+        sel = self._selected_indices()
+        if not sel:
+            return
+        import copy
+        steps = self._data['steps']
+        clones = [copy.deepcopy(steps[i]) for i in sel]
+        insert_at = sel[-1] + 1
+        for k, c in enumerate(clones):
+            steps.insert(insert_at + k, c)
+        self._refresh_step_list()
+        all_iids = self.step_tree.get_children()
+        new_indices = list(range(insert_at, insert_at + len(clones)))
+        self.step_tree.selection_set([all_iids[i] for i in new_indices])
+
+    def _save(self):
+        name = self._manager.sanitize_name(self.name_var.get())
+        if not name:
+            messagebox.showwarning(
+                "提示", "请填写有效的名称 (不能为空且不能全是非法字符)",
+                parent=self.dialog)
+            return
+        if not self._data['steps']:
+            messagebox.showwarning(
+                "提示", "至少要添加一个步骤", parent=self.dialog)
+            return
+
+        # 处理"新建工具时图片落在 _unnamed_temp"的搬迁
+        temp_dir = os.path.join(self._manager.tools_dir, '_unnamed_temp')
+        target_dir = self._manager.img_dir(name)
+        if (not self._original_name and os.path.isdir(temp_dir)
+                and os.path.exists(temp_dir)):
+            os.makedirs(target_dir, exist_ok=True)
+            for fname in os.listdir(temp_dir):
+                src = os.path.join(temp_dir, fname)
+                dst = os.path.join(target_dir, fname)
+                if os.path.isfile(src):
+                    os.replace(src, dst)
+                    # 同步改写 image_path 字段 (注意比较绝对路径)
+                    abs_src = os.path.abspath(src)
+                    for step in self._data['steps']:
+                        if (step.get('type') == 'image_search'
+                                and os.path.abspath(
+                                    step.get('image_path', '')) == abs_src):
+                            step['image_path'] = dst
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                pass
+
+        self._data['name'] = name
+        self._data['mode'] = self.mode_var.get()
+        self._data['description'] = self.desc_var.get()
+
+        try:
+            saved_name = self._manager.save(
+                self._data, original_name=self._original_name)
+        except ValueError as e:
+            messagebox.showwarning("提示", str(e), parent=self.dialog)
+            return
+
+        self.result = saved_name
+        self.dialog.destroy()
+
+    def _cancel(self):
+        # 删本次会话新增、但用户取消的截图
+        for p in self._pending_images:
+            if os.path.isfile(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        # 清理 _unnamed_temp 目录
+        temp_dir = os.path.join(self._manager.tools_dir, '_unnamed_temp')
+        if os.path.isdir(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        self.dialog.destroy()
