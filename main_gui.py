@@ -826,6 +826,8 @@ class CraftAssistantGUI:
         elif self._selected_type == 'tool' and self._selected_tool_id:
             info = TOOL_INFO.get(self._selected_tool_id, {})
             task_name = f"工具: {info.get('name', self._selected_tool_id)}"
+        elif self._selected_type == 'custom' and self._selected_custom_name:
+            task_name = f"自定义: {self._selected_custom_name}"
         else:
             messagebox.showinfo("提示", "请先选择配方或工具")
             return
@@ -912,7 +914,7 @@ class CraftAssistantGUI:
         if is_busy:
             self._mini_toggle_btn.config(text="停止", state=tk.NORMAL)
         else:
-            has_task = self._selected_type in ('recipe', 'tool')
+            has_task = self._selected_type in ('recipe', 'tool', 'custom')
             self._mini_toggle_btn.config(
                 text="开始",
                 state=tk.NORMAL if has_task else tk.DISABLED)
