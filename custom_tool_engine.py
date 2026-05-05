@@ -232,6 +232,7 @@ class CustomToolEngine:
             time.sleep(0.5)
             rect = self.window_manager.get_window_rect()
             if not rect:
+                self._log(f"  步骤{idx+1}: 重试期间窗口失效, 停止")
                 return False
             pos = self._find_template(path, rect, threshold)
             if pos:
