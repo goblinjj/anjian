@@ -799,9 +799,9 @@ class CustomToolDialog:
                 src = os.path.join(temp_dir, fname)
                 dst = os.path.join(target_dir, fname)
                 if os.path.isfile(src):
-                    os.replace(src, dst)
-                    # 同步改写 image_path 字段 (注意比较绝对路径)
+                    # 先记下源绝对路径再搬, image_path 比较时用 abspath
                     abs_src = os.path.abspath(src)
+                    os.replace(src, dst)
                     for step in self._data['steps']:
                         if (step.get('type') == 'image_search'
                                 and os.path.abspath(
