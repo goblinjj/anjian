@@ -22,6 +22,8 @@ _MOUSE_TYPE_TITLES = {
     'mouse_click': '鼠标左键',
     'mouse_right_click': '鼠标右键',
     'mouse_double_click': '鼠标双击',
+    'mouse_down': '鼠标按下',
+    'mouse_up': '鼠标弹起',
 }
 
 _IMAGE_ACTION_LABELS = [
@@ -43,6 +45,8 @@ def step_summary(step):
     """生成 #N 行右半部分的摘要文本 (不含 #N 前缀)。"""
     t = step.get('type')
     if t in _MOUSE_TYPE_TITLES:
+        if step.get('coord_mode') == 'current':
+            return f"{_MOUSE_TYPE_TITLES[t]}  当前光标位置"
         ox = step.get('offset_x', 0)
         oy = step.get('offset_y', 0)
         return f"{_MOUSE_TYPE_TITLES[t]}  偏移({ox}, {oy})"
@@ -67,7 +71,12 @@ def step_summary(step):
 
 
 class MouseStepDialog:
-    """鼠标移动 / 左键 / 右键 / 双击 共享的偏移编辑对话框。"""
+    """鼠标移动 / 左键 / 右键 / 双击 / 按下 / 弹起 共享的编辑对话框。
+
+    坐标支持两种来源:
+        offset  — 相对游戏窗口中心 (老行为)
+        current — 沿用上一步实际定位过的位置 (寻图后 → 直接动作)
+    """
 
     def __init__(self, parent, step_type, initial=None):
         self.result = None
@@ -75,7 +84,7 @@ class MouseStepDialog:
         title = _MOUSE_TYPE_TITLES.get(step_type, '鼠标动作')
         self.dialog = tk.Toplevel(parent)
         self.dialog.title(f"编辑[{title}]")
-        self.dialog.geometry("320x140")
+        self.dialog.geometry("360x210")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -84,38 +93,85 @@ class MouseStepDialog:
         frame = ttk.Frame(self.dialog, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        row = ttk.Frame(frame)
+        # 坐标来源切换
+        mode_row = ttk.Frame(frame)
+        mode_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(mode_row, text="坐标:", width=8).pack(side=tk.LEFT)
+        self.coord_mode_var = tk.StringVar(
+            value=initial.get('coord_mode', 'offset'))
+        ttk.Radiobutton(mode_row, text="窗口中心+偏移", value='offset',
+                        variable=self.coord_mode_var,
+                        command=self._refresh_coord_mode).pack(side=tk.LEFT)
+        ttk.Radiobutton(mode_row, text="当前光标位置", value='current',
+                        variable=self.coord_mode_var,
+                        command=self._refresh_coord_mode).pack(
+            side=tk.LEFT, padx=(8, 0))
+
+        # 切换的内容区
+        self._body = ttk.Frame(frame)
+        self._body.pack(fill=tk.X, expand=True)
+
+        # offset 面板
+        self._offset_frame = ttk.Frame(self._body)
+        row = ttk.Frame(self._offset_frame)
         row.pack(fill=tk.X, pady=2)
         ttk.Label(row, text="X 偏移:", width=8).pack(side=tk.LEFT)
         self.x_var = tk.IntVar(value=initial.get('offset_x', 0))
         ttk.Spinbox(row, from_=-2000, to=2000, increment=10,
                     textvariable=self.x_var, width=8).pack(side=tk.LEFT)
-
-        row2 = ttk.Frame(frame)
+        row2 = ttk.Frame(self._offset_frame)
         row2.pack(fill=tk.X, pady=2)
         ttk.Label(row2, text="Y 偏移:", width=8).pack(side=tk.LEFT)
         self.y_var = tk.IntVar(value=initial.get('offset_y', 0))
         ttk.Spinbox(row2, from_=-2000, to=2000, increment=10,
                     textvariable=self.y_var, width=8).pack(side=tk.LEFT)
-
-        ttk.Label(frame, text="(相对游戏窗口中心, 正X右/正Y下)",
+        ttk.Label(self._offset_frame,
+                  text="(相对游戏窗口中心, 正X右/正Y下)",
                   foreground='gray').pack(anchor=tk.W, pady=(4, 0))
 
+        # current 面板
+        self._current_frame = ttk.Frame(self._body)
+        ttk.Label(self._current_frame,
+                  text="沿用上一步实际定位过的鼠标坐标",
+                  foreground='gray').pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(self._current_frame,
+                  text="典型用法: 寻图(动作=仅移动) → 这里点击/按下/弹起",
+                  foreground='gray').pack(anchor=tk.W)
+        ttk.Label(self._current_frame,
+                  text="若前面没有定位过, 运行时会跳过本步并提示",
+                  foreground='gray').pack(anchor=tk.W, pady=(2, 0))
+
         btn_row = ttk.Frame(frame)
-        btn_row.pack(fill=tk.X, pady=(10, 0))
+        btn_row.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
         ttk.Button(btn_row, text="确定",
                    command=self._ok).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_row, text="取消",
                    command=self.dialog.destroy).pack(side=tk.RIGHT)
 
+        self._refresh_coord_mode()
         self.dialog.wait_window()
 
+    def _refresh_coord_mode(self):
+        self._offset_frame.pack_forget()
+        self._current_frame.pack_forget()
+        if self.coord_mode_var.get() == 'current':
+            self._current_frame.pack(fill=tk.X)
+        else:
+            self._offset_frame.pack(fill=tk.X)
+
     def _ok(self):
-        self.result = {
-            'type': self._step_type,
-            'offset_x': self.x_var.get(),
-            'offset_y': self.y_var.get(),
-        }
+        if self.coord_mode_var.get() == 'current':
+            self.result = {
+                'type': self._step_type,
+                'coord_mode': 'current',
+            }
+        else:
+            self.result = {
+                'type': self._step_type,
+                'coord_mode': 'offset',
+                'offset_x': self.x_var.get(),
+                'offset_y': self.y_var.get(),
+            }
         self.dialog.destroy()
 
 
@@ -431,9 +487,22 @@ class ImageSearchStepDialog:
             self._image_dir, f"img_{int(time.time()*1000)}.png")
         self.dialog.grab_release()
         self.dialog.withdraw()
-        ok = self._screenshot_cb(save_path)
-        self.dialog.deiconify()
-        self.dialog.grab_set()
+        # 父弹窗 (CustomToolDialog) 也一并 withdraw, 否则截图回调内部
+        # self.root.iconify() 会牵连父弹窗的 transient 链, 截图返回后
+        # 父弹窗不再可见, 用户点 "确定" 也无法走到 _save (表现为
+        # "截图后之前的弹窗自动关闭, 无法保存")。
+        parent = self.dialog.master
+        parent_was_visible = (isinstance(parent, tk.Toplevel)
+                              and parent.winfo_viewable())
+        if parent_was_visible:
+            parent.withdraw()
+        try:
+            ok = self._screenshot_cb(save_path)
+        finally:
+            if parent_was_visible:
+                parent.deiconify()
+            self.dialog.deiconify()
+            self.dialog.grab_set()
         if ok and os.path.exists(save_path):
             self._image_path = save_path
             self._on_image_added(save_path)
@@ -602,6 +671,8 @@ class CustomToolDialog:
             ('鼠标左键', 'mouse_click'),
             ('鼠标右键', 'mouse_right_click'),
             ('鼠标双击', 'mouse_double_click'),
+            ('鼠标按下', 'mouse_down'),
+            ('鼠标弹起', 'mouse_up'),
             ('键盘输入', 'key_press'),
             ('组合键', 'hotkey'),
             ('图片查询', 'image_search'),

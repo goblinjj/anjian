@@ -25,6 +25,7 @@ class CustomToolEngine:
         self.should_stop = False
         self.is_running = False
         self._thread = None
+        self._last_target = None
 
     def start(self, tool_data):
         if self.is_running:
@@ -44,6 +45,8 @@ class CustomToolEngine:
 
     def _run(self, tool_data):
         screenshot_util.set_capture_hwnd(self.window_manager.hwnd)
+        # 上一次实际定位过的屏幕坐标; 供 mouse 步骤 coord_mode='current' 使用
+        self._last_target = None
         try:
             if not self.window_manager.is_window_valid():
                 self._log("错误: 未绑定游戏窗口")
@@ -88,6 +91,10 @@ class CustomToolEngine:
             return self._do_mouse(idx, step, 'right_click')
         if t == 'mouse_double_click':
             return self._do_mouse(idx, step, 'double_click')
+        if t == 'mouse_down':
+            return self._do_mouse(idx, step, 'down')
+        if t == 'mouse_up':
+            return self._do_mouse(idx, step, 'up')
         if t == 'key_press':
             return self._do_key_press(idx, step)
         if t == 'hotkey':
@@ -108,12 +115,20 @@ class CustomToolEngine:
         return cx + offset_x, cy + offset_y
 
     def _do_mouse(self, idx, step, action):
-        target = self._resolve_offset(
-            step.get('offset_x', 0), step.get('offset_y', 0))
-        if not target:
-            self._log(f"  步骤{idx+1}: 无法获取窗口坐标")
-            return False
-        x, y = target
+        if step.get('coord_mode') == 'current':
+            if self._last_target is None:
+                self._log(
+                    f"  步骤{idx+1}: 当前光标位置未知 "
+                    f"(前面没有定位过的步骤), 跳过")
+                return True
+            x, y = self._last_target
+        else:
+            target = self._resolve_offset(
+                step.get('offset_x', 0), step.get('offset_y', 0))
+            if not target:
+                self._log(f"  步骤{idx+1}: 无法获取窗口坐标")
+                return False
+            x, y = target
         hwnd = self.window_manager.hwnd
         if action == 'move':
             bg_input.post_move(hwnd, x, y)
@@ -123,6 +138,11 @@ class CustomToolEngine:
             bg_input.post_right_click(hwnd, x, y)
         elif action == 'double_click':
             bg_input.post_double_click(hwnd, x, y)
+        elif action == 'down':
+            bg_input.post_mouse_down(hwnd, x, y)
+        elif action == 'up':
+            bg_input.post_mouse_up(hwnd, x, y)
+        self._last_target = (x, y)
         self._log(f"  步骤{idx+1}: {action} ({x},{y})")
         return True
 
@@ -197,6 +217,8 @@ class CustomToolEngine:
         fn = self._IMAGE_ACTION_MAP.get(on_found)
         if fn:
             fn(self.window_manager.hwnd, target_x, target_y)
+            # 任何使光标移动的动作都把命中点记下, 供后续 coord_mode='current'
+            self._last_target = (target_x, target_y)
 
     def _do_image_search(self, idx, step):
         path = step.get('image_path', '')

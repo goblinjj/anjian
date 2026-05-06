@@ -128,6 +128,22 @@ def post_long_press(hwnd, screen_x, screen_y, pre_delay=0.0, hold_time=0.5):
     post_click(hwnd, screen_x, screen_y, pre_delay=pre_delay, hold_time=hold_time)
 
 
+def post_mouse_down(hwnd, screen_x, screen_y):
+    """左键按下 (不抬起)。配合 post_mouse_up 实现按住 / 拖拽。"""
+    cx, cy = _screen_to_client(hwnd, screen_x, screen_y)
+    lp = _pack_lparam(cx, cy)
+    _post(hwnd, WM_MOUSEMOVE, 0, lp)
+    _post(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lp)
+
+
+def post_mouse_up(hwnd, screen_x, screen_y):
+    """左键抬起 (不重新按下)。"""
+    cx, cy = _screen_to_client(hwnd, screen_x, screen_y)
+    lp = _pack_lparam(cx, cy)
+    _post(hwnd, WM_MOUSEMOVE, 0, lp)
+    _post(hwnd, WM_LBUTTONUP, 0, lp)
+
+
 def post_double_click(hwnd, screen_x, screen_y, pre_delay=0.0, interval=0.05):
     """左键双击。
 
