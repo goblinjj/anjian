@@ -49,9 +49,32 @@ class CustomToolManager:
         return os.path.isfile(self._json_path(name))
 
     def load(self, name):
-        """加载工具数据。文件不存在抛 FileNotFoundError。"""
+        """加载工具数据。文件不存在抛 FileNotFoundError。
+
+        兼容老数据: 把 image_path 里的绝对路径折回相对 (相对 cwd), 下次
+        save 时自动落新格式。否则改名时 save 里的 startswith(old_dir+sep)
+        匹配不到老绝对路径, 图片改名后引用就坏了。
+        """
         with open(self._json_path(name), 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+        cwd = os.getcwd()
+        for step in data.get('steps', []):
+            if step.get('type') != 'image_search':
+                continue
+            p = step.get('image_path', '')
+            if not p or not os.path.isabs(p):
+                continue
+            try:
+                rel = os.path.relpath(p, cwd)
+            except ValueError:
+                # Windows 跨盘符 relpath 抛 ValueError, 保持绝对路径
+                continue
+            # 解析后跑出 cwd 外说明用户挪了工作目录, 此时相对路径无意义,
+            # 留绝对路径让运行时自己用 (cv2/Image.open 都吃绝对)
+            if rel.startswith('..'):
+                continue
+            step['image_path'] = rel
+        return data
 
     def save(self, tool_data, original_name=None):
         """保存工具。
