@@ -22,3 +22,7 @@ settings.json
 hotkey_config.json
 .superpowers/
 .pytest_cache/
+
+# macOS metadata (AppleDouble files on non-HFS volumes, Finder thumbnails)
+._*
+.DS_Store
