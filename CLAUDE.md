@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**按键小精灵 (Key Mouse Spirit)** - A Windows game automation tool using image recognition (OpenCV) and keyboard/mouse automation. Written in Python with tkinter GUI, distributed as a compiled .exe via PyInstaller.
+**魔力宝贝制造助手 (Cross Gate Crafting Assistant)** — A Windows-only automation tool for the game 魔力宝贝 (Cross Gate / Magic Baby). Uses OpenCV image recognition, template-based digit recognition, and **background input via `PostMessage`** (game responds without moving the real cursor / stealing focus). Python + tkinter GUI, distributed as a PyInstaller .exe.
 
-The entire UI and documentation are in **Chinese**.
+The repo was previously a generic automation tool ("按键小精灵") with a tree-based step editor; that architecture is **gone**. Don't restore it. The README.md is also stale and describes the old project — trust this file.
+
+The entire UI and code comments are in **Chinese**.
 
 ## Build & Run
 
@@ -14,73 +16,89 @@ The entire UI and documentation are in **Chinese**.
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the application
+# Run the application (Windows only — pywin32, keyboard, BitBlt are required)
 python start_gui.py
 
 # Build Windows executable
 python build_exe.py
-# Output: dist/按键小精灵.exe
+# Output: dist/魔力宝贝制造助手.exe   (CI builds an ASCII name then renames)
+
+# Run unit tests
+python -m pytest tests/
+python -m pytest tests/test_recipe_manager.py -v   # single file
 ```
 
-There is no formal test suite. `test_antivirus_setup.py` is a standalone antivirus compatibility checker, not a unit test.
+`test_antivirus_setup.py` at the repo root is a standalone antivirus checker, **not** a unit test. Real unit tests live in `tests/`.
 
 ## Architecture
 
-**Entry flow:** `start_gui.py` (dependency check) → `main_gui.py` (AutomationGUI, main window)
+**Entry flow:** `start_gui.py` (deps check) → `main_gui.py:CraftAssistantGUI`.
 
-**Core modules:**
-- `main_gui.py` - Main tkinter GUI with step list, edit panel, toolbar, status bar
-- `execution_engine.py` - ExecutionEngine (blocking) and AutomationRunner (daemon thread wrapper) that execute automation steps
-- `models.py` - ActionStep class with step_type, params dict, enabled flag, description
-- `file_manager.py` - ConfigManager for JSON config persistence
-- `hotkey_manager.py` - Global hotkey monitoring via `keyboard` library (default: backtick=start, ESC=stop); config persisted to `hotkey_config.json`
-- `screenshot_util.py` - Screen capture using `mss` library (fixes RDP/remote desktop black screen issue vs pyautogui)
-- `ui_editors.py` - EditPageManager with tabbed editors for 10 step types (dynamic display by step type)
-- `dialogs.py` - StepTypeDialog, ScreenshotDialog, HotkeySettingsDialog
+The main window has three top-level work modes selected from a Treeview on the left:
 
-**Build utilities:**
-- `build_exe.py` - PyInstaller build script
-- `generate_hashes.py` - Generates MD5/SHA256 hashes for release artifacts
-- `deploy.py`, `force_fix_icon.py` - Deployment and icon helpers
+1. **配方 (Recipe)** — automated crafting loop driven by `CraftEngine` against a list of materials.
+2. **工具 (Built-in tools)** — three fixed scripts: `auto_encounter` (双点循环点击), `loop_healing` (技能 + 队员偏移), `get_material` (热键触发的一次性脚本).
+3. **自定义 (Custom tools)** — user-defined step sequences (`once` or `loop` mode) with mouse / keyboard / image-search steps.
 
-**Step types** (ActionStep.step_type):
+### Core modules
 
-Basic operations:
-1. `mouse_click` - Click at coordinates with configurable button/count/interval
-2. `keyboard_press` - Single key, combo (e.g. "ctrl+c"), or text input
-3. `image_search` - OpenCV template matching with confidence threshold, region support, timeout, and optional click action
-4. `wait` - Fixed delay or wait-for-image
+| Module | Responsibility |
+|---|---|
+| `main_gui.py` — `CraftAssistantGUI` | Main window. Owns all managers/engines, wires the Treeview categories, top-bar window-bind/settings/hotkey buttons, log panel, and mini-mode. |
+| `window_manager.py` — `WindowManager` | "Click-to-bind" any window via a low-level mouse hook (`SetWindowsHookEx`/`WH_MOUSE_LL`); stores `hwnd`. All input/screenshot relies on this hwnd. |
+| `screenshot_util.py` | `take_screenshot(region=...)` — when bound, uses Win32 `BitBlt` from the window DC (no flicker, works even if the game is occluded), with mss as fallback. Always call `set_capture_hwnd(hwnd)` before a run and `set_capture_hwnd(None)` after. |
+| `bg_input.py` | Background mouse/keyboard via `PostMessage` (`WM_MOUSEMOVE`/`WM_LBUTTONDOWN`/...). Takes **screen coordinates**, internally converts via `ScreenToClient`. The real cursor never moves — this is the project's central trick. **Don't replace with `pyautogui`.** |
+| `craft_engine.py` — `CraftEngine` | Daemon-thread crafting loop. Iterates `recipe.materials`, clicks slots, presses 执行, waits for completion image, periodically presses 整理. `should_stop` flag for cancellation. |
+| `backpack_reader.py` — `BackpackReader` | Locates the 5×4 backpack grid (`GRID_COLS=5`, `GRID_ROWS=4`) by template-matching `backpack_title` and `empty_cell`, then crops each cell into icon+digit-region for matching. |
+| `digit_recognizer.py` — `DigitRecognizer` | 0–9 template matching with CLAHE-preprocessed grayscale **and** a G–R channel variant (青色数字 vs background); reads quantities from backpack cells. |
+| `recipe_manager.py` — `RecipeManager` | Per-recipe directory under `recipes/<name>/recipe.json` plus material image files. CRUD + rename (renames dir and rewrites `name`). |
+| `tool_scripts.py` | Three engines: `AutoEncounterEngine`, `LoopHealingEngine`, `GetMaterialEngine`. Each is a daemon-thread runner with `should_stop`. |
+| `tool_dialog.py` | Config dialogs for the three built-in tools, plus `load_tool_config` / `save_tool_config` (`tool_config.json`). |
+| `custom_tool_manager.py` — `CustomToolManager` | One-tool-per-JSON under `custom_tools/<name>.json` plus same-name image subdir; handles sanitize/save/rename (renames subdir + rewrites every `image_path` field). |
+| `custom_tool_engine.py` — `CustomToolEngine` | Executes a custom-tool's `steps` list (`once` or infinite `loop` mode). Carries `_last_target` so a `coord_mode='current'` mouse step can reuse the previous step's resolved coordinates. |
+| `custom_tool_dialog.py` | Editor for custom tools — 8 step types: `mouse_move` / `mouse_click` / `mouse_right_click` / `mouse_double_click` / `mouse_down` / `mouse_up` / `key_press` / `hotkey` / `image_search`. |
+| `hotkey_manager.py` — `HotkeyManager` | Global hotkeys via `keyboard` lib. Defaults: `` ` ``=start, `esc`=stop, `+`=get-material. **Foreground gate:** hotkeys only fire when the bound game window is the foreground top-level window — supports running multiple instances bound to different game windows. Persists to `hotkey_config.json` (and reads `tool_config.json` for the get-material hotkey). |
+| `settings_dialog.py` | Global settings (`settings.json`) — template paths for the 5 location anchors (背包定位 / 空格子 / 执行按钮 / 制造完成 / 整理背包), grid geometry, click delays, digit/icon regions. |
+| `recipe_dialog.py` / `hotkey_dialog.py` / `tool_dialog.py` / `custom_tool_dialog.py` | Tk Toplevel editors. |
 
-Flow control (container types with `children`/`else_children`):
-5. `if_image` - Conditional: if image found → execute children, else → execute else_children
-6. `for_loop` - Loop N times over children
-7. `while_image` - Loop while image exists/not exists
-8. `break_loop` - Break out of nearest loop
+### Persistence layout
 
-Advanced operations:
-9. `random_delay` - Random wait between min/max time
-10. `mouse_scroll` - Scroll wheel at coordinates
+```
+settings.json                         # global settings (templates, geometry, delays)
+hotkey_config.json                    # start/stop hotkeys
+tool_config.json                      # 3 built-in tools' params (incl. get-material hotkey)
+templates/                            # bundled anchor PNGs (backpack_title, empty_cell, ...)
+templates/digits/0.png ... 9.png      # digit templates
+recipes/<name>/recipe.json            # one recipe per dir; material images alongside
+recipes/<name>/<material>.png
+custom_tools/<name>.json              # one custom tool per JSON
+custom_tools/<name>/<step>.png        # image-search templates for that tool only
+```
 
-**Data model:** `ActionStep` supports tree hierarchy via `children` and `else_children` lists. Container types (`if_image`, `for_loop`, `while_image`) can nest other steps. The Treeview displays this as an expandable tree. Mapping dicts `_item_to_step` and `_item_to_parent_list` replace the old flat-index approach.
+### Threading & control flow
 
-**Execution model:** `ExecutionEngine` uses recursive `_execute_step_list`/`_execute_one_step` pattern with `ExecutionContext` carrying `should_break` state. Runs in a daemon thread via AutomationRunner with `should_stop` flag for cancellation. HotkeyManager runs its own listener thread.
+- Every engine (`CraftEngine`, the three `tool_scripts` engines, `CustomToolEngine`) runs in its own **daemon thread** with a `should_stop` flag and chunked sleeps for prompt cancellation. `is_running` flips while active. The GUI thread polls these flags / awaits via `root.after`.
+- The hotkey listener runs in its own thread inside the `keyboard` library; `_is_my_game_foreground()` ensures hotkeys don't fire across instances.
+- `get_material` is special: it can run **concurrently** with crafting/tool scripts (separate engine instance, separate hotkey).
 
-**Image handling:** Uses `PIL.Image.open()` instead of `pyautogui` for loading images to support Chinese file paths.
+### Key invariants — read before changing things
 
-## Configuration Format
-
-JSON files with structure: `{ "version": "2.0", "created_time": "...", "description": "...", "steps": [...] }`. Steps can contain `children` and `else_children` arrays for nested flow control. v1.0 configs (without children) are loaded transparently via default empty lists.
+- **Always call `screenshot_util.set_capture_hwnd(hwnd)` at engine start and `set_capture_hwnd(None)` at end.** Otherwise capture falls back to mss and breaks under occlusion.
+- **Coordinates passed to `bg_input` are screen coordinates**, not client coordinates. `ScreenToClient` happens inside.
+- **Use `PIL.Image.open()`, not `cv2.imread()` or `pyautogui`, when loading template images** — file paths often contain Chinese characters.
+- **All file I/O uses `encoding='utf-8'`** for the same reason.
+- **Don't reintroduce `pyautogui` mouse/keyboard calls.** `pyautogui` is still imported (e.g. `pyautogui.position()` to read cursor) but only because it's read-only — actuation must go through `bg_input` so the real mouse stays put.
+- **Custom-tool image paths are stored relative to repo root** (e.g. `custom_tools/<tool>/<file>.png`). Renaming a tool requires walking every `image_path` and rewriting the prefix; `CustomToolManager.save` already does this — keep it that way.
 
 ## CI/CD
 
-`.github/workflows/auto-release.yml` - Builds exe on windows-latest with Python 3.11 and creates a GitHub Release with tag `v{YYYY.MM.dd}-{HHmm}` on push to main/master.
+`.github/workflows/auto-release.yml` — on push to `main`/`master` (excluding `**.md`, `.gitignore`, `docs/**`), Windows runner with Python 3.11 builds the exe via `build_exe.py` and publishes a GitHub Release tagged `v{YYYY.MM.dd}-{HHmm}`. CI builds with the ASCII name `MoliCraftAssistant.exe` then renames to `魔力宝贝制造助手.exe` to dodge encoding issues.
 
-## Key Dependencies
+## Key dependencies
 
-opencv-python, pyautogui, numpy, Pillow, keyboard, mss, pyinstaller, requests
+`opencv-python`, `numpy`, `Pillow`, `mss`, `keyboard`, `pywin32` (win32gui/win32ui/win32con — required for BitBlt capture), `pyautogui` (read-only, for `position()`), `pyinstaller`. Target Python is 3.11.
 
-## Platform Notes
+## Platform notes
 
-- **Target platform is Windows.** The tool uses Windows-specific libraries (`keyboard` for global hotkeys, `mss` for screen capture). Development can happen on macOS/Linux but full functionality requires Windows.
-- The `.exe` output name contains Chinese characters (`按键小精灵.exe`). File paths in configs may also contain Chinese characters — always use `encoding='utf-8'` when reading/writing files.
-- The app auto-loads `default.json` on startup. If it doesn't exist, an empty config is created.
+- **Windows-only at runtime.** `bg_input.PostMessage`, `window_manager`'s low-level mouse hook, and the BitBlt capture path all hard-depend on the Win32 API. Code can be edited on macOS/Linux but cannot be exercised end-to-end there.
+- The exe filename and many user files contain Chinese; always pass `encoding='utf-8'` and prefer PIL over cv2 for path-based loads.
