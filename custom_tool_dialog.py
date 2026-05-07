@@ -26,6 +26,12 @@ _MOUSE_TYPE_TITLES = {
     'mouse_up': '鼠标弹起',
 }
 
+# 鼠标动作下拉框的显示顺序 (常用在前)
+_MOUSE_TYPE_ORDER = [
+    'mouse_click', 'mouse_right_click', 'mouse_double_click',
+    'mouse_move', 'mouse_down', 'mouse_up',
+]
+
 _IMAGE_ACTION_LABELS = [
     ('click', '左键单击'),
     ('double_click', '左键双击'),
@@ -42,7 +48,14 @@ _IMAGE_NOT_FOUND_LABELS = [
 
 
 def step_summary(step):
-    """生成 #N 行右半部分的摘要文本 (不含 #N 前缀)。"""
+    """生成 #N 行右半部分的摘要文本 (不含 #N 前缀)。
+
+    若用户填写了步骤名,直接显示步骤名 (覆盖默认摘要)。
+    """
+    name = step.get('name', '').strip() if isinstance(
+        step.get('name'), str) else ''
+    if name:
+        return name
     t = step.get('type')
     if t in _MOUSE_TYPE_TITLES:
         if step.get('coord_mode') == 'current':
@@ -71,38 +84,61 @@ def step_summary(step):
 
 
 class MouseStepDialog:
-    """鼠标移动 / 左键 / 右键 / 双击 / 按下 / 弹起 共享的编辑对话框。
+    """鼠标动作通用编辑对话框 — 在弹层里选具体动作类型 (左键/右键/...)。
 
     坐标支持两种来源:
         offset  — 相对游戏窗口中心 (老行为)
-        current — 沿用上一步实际定位过的位置 (寻图后 → 直接动作)
+        current — 沿用上一步实际定位过的位置 (寻图后 → 直接动作),新建默认
     """
 
     def __init__(self, parent, step_type, initial=None):
         self.result = None
-        self._step_type = step_type
-        title = _MOUSE_TYPE_TITLES.get(step_type, '鼠标动作')
+        is_new = not initial
+        initial = initial or {}
+        # 当前选中的动作类型 (字符串 type id)
+        self._step_type = step_type if step_type in _MOUSE_TYPE_TITLES \
+            else 'mouse_click'
+
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title(f"编辑[{title}]")
-        self.dialog.geometry("360x210")
+        self.dialog.title("编辑[鼠标动作]")
+        self.dialog.geometry("380x290")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
-        initial = initial or {}
         frame = ttk.Frame(self.dialog, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        # 坐标来源切换
+        # 步骤名 (可选)
+        name_row = ttk.Frame(frame)
+        name_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(name_row, text="步骤名:", width=8).pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=initial.get('name', ''))
+        ttk.Entry(name_row, textvariable=self.name_var, width=24).pack(
+            side=tk.LEFT)
+
+        # 动作类型
+        type_row = ttk.Frame(frame)
+        type_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(type_row, text="动作:", width=8).pack(side=tk.LEFT)
+        self.type_label_var = tk.StringVar(
+            value=_MOUSE_TYPE_TITLES[self._step_type])
+        ttk.Combobox(
+            type_row, textvariable=self.type_label_var,
+            values=[_MOUSE_TYPE_TITLES[t] for t in _MOUSE_TYPE_ORDER],
+            state='readonly', width=12).pack(side=tk.LEFT)
+
+        # 坐标来源切换 — 新建时默认 current; 编辑时遵照原值 (老数据缺省按 offset)
         mode_row = ttk.Frame(frame)
         mode_row.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(mode_row, text="坐标:", width=8).pack(side=tk.LEFT)
-        self.coord_mode_var = tk.StringVar(
-            value=initial.get('coord_mode', 'offset'))
-        ttk.Radiobutton(mode_row, text="窗口中心+偏移", value='offset',
+        default_coord = 'current' if is_new else initial.get(
+            'coord_mode', 'offset')
+        self.coord_mode_var = tk.StringVar(value=default_coord)
+        ttk.Radiobutton(mode_row, text="当前光标位置", value='current',
                         variable=self.coord_mode_var,
                         command=self._refresh_coord_mode).pack(side=tk.LEFT)
-        ttk.Radiobutton(mode_row, text="当前光标位置", value='current',
+        ttk.Radiobutton(mode_row, text="窗口中心+偏移", value='offset',
                         variable=self.coord_mode_var,
                         command=self._refresh_coord_mode).pack(
             side=tk.LEFT, padx=(8, 0))
@@ -160,18 +196,25 @@ class MouseStepDialog:
             self._offset_frame.pack(fill=tk.X)
 
     def _ok(self):
+        label_to_type = {v: k for k, v in _MOUSE_TYPE_TITLES.items()}
+        selected_type = label_to_type.get(
+            self.type_label_var.get(), 'mouse_click')
         if self.coord_mode_var.get() == 'current':
-            self.result = {
-                'type': self._step_type,
+            result = {
+                'type': selected_type,
                 'coord_mode': 'current',
             }
         else:
-            self.result = {
-                'type': self._step_type,
+            result = {
+                'type': selected_type,
                 'coord_mode': 'offset',
                 'offset_x': self.x_var.get(),
                 'offset_y': self.y_var.get(),
             }
+        name = self.name_var.get().strip()
+        if name:
+            result['name'] = name
+        self.result = result
         self.dialog.destroy()
 
 
@@ -183,13 +226,21 @@ class KeyPressStepDialog:
         initial = initial or {}
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑[键盘输入]")
-        self.dialog.geometry("420x260")
+        self.dialog.geometry("420x300")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
         frame = ttk.Frame(self.dialog, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
+
+        # 步骤名 (可选)
+        name_row = ttk.Frame(frame)
+        name_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(name_row, text="步骤名:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=initial.get('name', ''))
+        ttk.Entry(name_row, textvariable=self.name_var, width=28).pack(
+            side=tk.LEFT, padx=5)
 
         # 模式切换
         mode_row = ttk.Frame(frame)
@@ -258,8 +309,8 @@ class KeyPressStepDialog:
                 messagebox.showwarning("提示", "请填写按键名",
                                        parent=self.dialog)
                 return
-            self.result = {'type': 'key_press',
-                           'input_mode': 'single', 'key': key}
+            result = {'type': 'key_press',
+                      'input_mode': 'single', 'key': key}
         else:
             text = self.text_var.get()
             if not text:
@@ -277,9 +328,13 @@ class KeyPressStepDialog:
                         "提示", f"暂不支持大写字母: {ch} (请改用小写)",
                         parent=self.dialog)
                     return
-            self.result = {
+            result = {
                 'type': 'key_press', 'input_mode': 'text',
                 'text': text, 'char_interval_ms': self.interval_var.get()}
+        name = self.name_var.get().strip()
+        if name:
+            result['name'] = name
+        self.result = result
         self.dialog.destroy()
 
 
@@ -291,13 +346,21 @@ class HotkeyStepDialog:
         initial = initial or {}
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑[组合键]")
-        self.dialog.geometry("380x150")
+        self.dialog.geometry("380x190")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
         frame = ttk.Frame(self.dialog, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
+
+        # 步骤名 (可选)
+        name_row = ttk.Frame(frame)
+        name_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(name_row, text="步骤名:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=initial.get('name', ''))
+        ttk.Entry(name_row, textvariable=self.name_var, width=24).pack(
+            side=tk.LEFT, padx=5)
 
         row = ttk.Frame(frame)
         row.pack(fill=tk.X)
@@ -369,7 +432,11 @@ class HotkeyStepDialog:
                 messagebox.showwarning(
                     "提示", f"无法识别的按键: {k}", parent=self.dialog)
                 return
-        self.result = {'type': 'hotkey', 'keys': keys}
+        result = {'type': 'hotkey', 'keys': keys}
+        name = self.name_var.get().strip()
+        if name:
+            result['name'] = name
+        self.result = result
         self.dialog.destroy()
 
 
@@ -386,19 +453,27 @@ class ImageSearchStepDialog:
                  on_image_added=None, initial=None):
         self.result = None
         self._screenshot_cb = screenshot_callback
-        self._image_dir = os.path.abspath(image_dir)
+        self._image_dir = image_dir
         self._on_image_added = on_image_added or (lambda p: None)
         initial = initial or {}
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑[图片查询]")
-        self.dialog.geometry("520x440")
+        self.dialog.geometry("520x480")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
         main = ttk.Frame(self.dialog, padding=12)
         main.pack(fill=tk.BOTH, expand=True)
+
+        # 步骤名 (可选)
+        name_row = ttk.Frame(main)
+        name_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(name_row, text="步骤名:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=initial.get('name', ''))
+        ttk.Entry(name_row, textvariable=self.name_var, width=32).pack(
+            side=tk.LEFT, padx=5)
 
         # 图片模板
         img_frame = ttk.LabelFrame(main, text="图片模板", padding=8)
@@ -516,7 +591,7 @@ class ImageSearchStepDialog:
         # 中文 label → 英文 enum 反查
         action_label_to_id = {label: id_ for id_, label in _IMAGE_ACTION_LABELS}
         nf_label_to_id = {label: id_ for id_, label in _IMAGE_NOT_FOUND_LABELS}
-        self.result = {
+        result = {
             'type': 'image_search',
             'image_path': self._image_path,
             'offset_x': self.ox_var.get(),
@@ -526,16 +601,24 @@ class ImageSearchStepDialog:
             'retry_seconds': float(self.retry_var.get()),
             'threshold': float(self.threshold_var.get()),
         }
+        name = self.name_var.get().strip()
+        if name:
+            result['name'] = name
+        self.result = result
         self.dialog.destroy()
 
 
 class WaitStepDialog:
+    _MS_MIN = 50
+    _MS_MAX = 30000
+    _MS_STEP = 100
+
     def __init__(self, parent, initial=None):
         self.result = None
         initial = initial or {}
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑[等待]")
-        self.dialog.geometry("280x110")
+        self.dialog.geometry("360x160")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -543,14 +626,29 @@ class WaitStepDialog:
         frame = ttk.Frame(self.dialog, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
+        # 步骤名 (可选)
+        name_row = ttk.Frame(frame)
+        name_row.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(name_row, text="步骤名:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar(value=initial.get('name', ''))
+        ttk.Entry(name_row, textvariable=self.name_var, width=24).pack(
+            side=tk.LEFT, padx=5)
+
         row = ttk.Frame(frame)
         row.pack(fill=tk.X)
         ttk.Label(row, text="等待时间:").pack(side=tk.LEFT)
-        self.ms_var = tk.IntVar(value=initial.get('ms', 500))
-        ttk.Spinbox(row, from_=50, to=30000, increment=50,
-                    textvariable=self.ms_var, width=8).pack(
-            side=tk.LEFT, padx=5)
-        ttk.Label(row, text="ms (50 ~ 30000)").pack(side=tk.LEFT)
+        self.ms_var = tk.IntVar(value=initial.get('ms', 300))
+        ttk.Button(row, text="−", width=2,
+                   command=lambda: self._step(-self._MS_STEP)).pack(
+            side=tk.LEFT, padx=(5, 2))
+        ttk.Spinbox(row, from_=self._MS_MIN, to=self._MS_MAX,
+                    increment=self._MS_STEP,
+                    textvariable=self.ms_var, width=8).pack(side=tk.LEFT)
+        ttk.Button(row, text="+", width=2,
+                   command=lambda: self._step(self._MS_STEP)).pack(
+            side=tk.LEFT, padx=(2, 5))
+        ttk.Label(row, text=f"ms ({self._MS_MIN} ~ {self._MS_MAX})").pack(
+            side=tk.LEFT)
 
         btn_row = ttk.Frame(frame)
         btn_row.pack(fill=tk.X, pady=(15, 0))
@@ -561,8 +659,27 @@ class WaitStepDialog:
 
         self.dialog.wait_window()
 
+    def _step(self, delta):
+        try:
+            v = self.ms_var.get()
+        except tk.TclError:
+            v = 300
+        v = max(self._MS_MIN, min(self._MS_MAX, v + delta))
+        self.ms_var.set(v)
+
     def _ok(self):
-        self.result = {'type': 'wait', 'ms': self.ms_var.get()}
+        try:
+            ms = int(self.ms_var.get())
+        except (tk.TclError, ValueError):
+            messagebox.showwarning("提示", "等待时间必须是整数",
+                                   parent=self.dialog)
+            return
+        ms = max(self._MS_MIN, min(self._MS_MAX, ms))
+        result = {'type': 'wait', 'ms': ms}
+        name = self.name_var.get().strip()
+        if name:
+            result['name'] = name
+        self.result = result
         self.dialog.destroy()
 
 
@@ -667,12 +784,7 @@ class CustomToolDialog:
         self._add_mb = ttk.Menubutton(op_row, text="+ 添加步骤", width=12)
         menu = tk.Menu(self._add_mb, tearoff=0)
         for label, st_type in [
-            ('鼠标移动', 'mouse_move'),
-            ('鼠标左键', 'mouse_click'),
-            ('鼠标右键', 'mouse_right_click'),
-            ('鼠标双击', 'mouse_double_click'),
-            ('鼠标按下', 'mouse_down'),
-            ('鼠标弹起', 'mouse_up'),
+            ('鼠标动作', 'mouse_click'),
             ('键盘输入', 'key_press'),
             ('组合键', 'hotkey'),
             ('图片查询', 'image_search'),
@@ -874,15 +986,15 @@ class CustomToolDialog:
                 src = os.path.join(temp_dir, fname)
                 dst = os.path.join(target_dir, fname)
                 if os.path.isfile(src):
-                    # 先记下源绝对路径再搬, image_path 比较时用 abspath
+                    # image_path 存相对路径 (与 manager.save 改名重写逻辑对齐)。
+                    # 比较仍用 abspath, 兼容旧数据里残留的绝对路径。
                     abs_src = os.path.abspath(src)
                     os.replace(src, dst)
-                    abs_dst = os.path.abspath(dst)
                     for step in self._data['steps']:
                         if (step.get('type') == 'image_search'
                                 and os.path.abspath(
                                     step.get('image_path', '')) == abs_src):
-                            step['image_path'] = abs_dst
+                            step['image_path'] = dst
             try:
                 os.rmdir(temp_dir)
             except OSError:
