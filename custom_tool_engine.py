@@ -220,6 +220,9 @@ class CustomToolEngine:
             # 任何使光标移动的动作都把命中点记下, 供后续 coord_mode='current'
             self._last_target = (target_x, target_y)
 
+    # 老枚举 → 新枚举, 加载老工具时保持等价
+    _NF_LEGACY = {'retry_skip': 'skip', 'retry_stop': 'stop'}
+
     def _do_image_search(self, idx, step):
         path = step.get('image_path', '')
         if not path:
@@ -227,8 +230,9 @@ class CustomToolEngine:
             return True
         threshold = step.get('threshold', 0.7)
         on_found = step.get('on_found', 'click')
-        on_not_found = step.get('on_not_found', 'skip')
-        retry_seconds = step.get('retry_seconds', 3.0)
+        nf_raw = step.get('on_not_found', 'skip')
+        on_not_found = self._NF_LEGACY.get(nf_raw, nf_raw)
+        retry_seconds = max(0.0, float(step.get('retry_seconds', 3.0)))
         ox = step.get('offset_x', 0)
         oy = step.get('offset_y', 0)
 
@@ -237,6 +241,7 @@ class CustomToolEngine:
             self._log(f"  步骤{idx+1}: 无法获取窗口坐标")
             return False
 
+        # 首次尝试 + retry_seconds 内反复重试 (0 = 不重试, 只看一次)
         pos = self._find_template(path, rect, threshold)
         if pos:
             tx, ty = pos[0] + ox, pos[1] + oy
@@ -244,29 +249,27 @@ class CustomToolEngine:
             self._log(f"  步骤{idx+1}: 图片找到 → {on_found} ({tx},{ty})")
             return True
 
-        if on_not_found == 'skip':
-            self._log(f"  步骤{idx+1}: 图片未找到, 直接跳过")
-            return True
-
-        self._log(f"  步骤{idx+1}: 未找到, 重试 {retry_seconds:.1f}秒...")
-        deadline = time.time() + retry_seconds
-        while not self.should_stop and time.time() < deadline:
-            time.sleep(0.5)
-            rect = self.window_manager.get_window_rect()
-            if not rect:
-                self._log(f"  步骤{idx+1}: 重试期间窗口失效, 停止")
+        if retry_seconds > 0:
+            self._log(f"  步骤{idx+1}: 未找到, 重试 {retry_seconds:.1f}秒...")
+            deadline = time.time() + retry_seconds
+            while not self.should_stop and time.time() < deadline:
+                time.sleep(0.5)
+                rect = self.window_manager.get_window_rect()
+                if not rect:
+                    self._log(f"  步骤{idx+1}: 重试期间窗口失效, 停止")
+                    return False
+                pos = self._find_template(path, rect, threshold)
+                if pos:
+                    tx, ty = pos[0] + ox, pos[1] + oy
+                    self._apply_image_action(tx, ty, on_found)
+                    self._log(
+                        f"  步骤{idx+1}: 重试找到 → {on_found} ({tx},{ty})")
+                    return True
+            if self.should_stop:
                 return False
-            pos = self._find_template(path, rect, threshold)
-            if pos:
-                tx, ty = pos[0] + ox, pos[1] + oy
-                self._apply_image_action(tx, ty, on_found)
-                self._log(f"  步骤{idx+1}: 重试找到 → {on_found} ({tx},{ty})")
-                return True
 
-        if self.should_stop:
+        if on_not_found == 'stop':
+            self._log(f"  步骤{idx+1}: 未找到 (超时), 停止整个工具")
             return False
-        if on_not_found == 'retry_stop':
-            self._log(f"  步骤{idx+1}: 重试超时, 停止整个工具")
-            return False
-        self._log(f"  步骤{idx+1}: 重试超时, 跳过本步")
+        self._log(f"  步骤{idx+1}: 未找到 (超时), 跳过本步")
         return True

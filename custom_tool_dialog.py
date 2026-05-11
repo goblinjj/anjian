@@ -42,9 +42,14 @@ _IMAGE_ACTION_LABELS = [
 
 _IMAGE_NOT_FOUND_LABELS = [
     ('skip', '跳过本步'),
-    ('retry_skip', '重试后跳过本步'),
-    ('retry_stop', '重试后停止整个工具'),
+    ('stop', '停止整个工具'),
 ]
+
+# 旧值到新值的映射 (加载老 JSON 时反查 + 显示 step_summary 时归一化)
+_IMAGE_NOT_FOUND_LEGACY_MAP = {
+    'retry_skip': 'skip',
+    'retry_stop': 'stop',
+}
 
 
 def step_summary(step):
@@ -73,11 +78,14 @@ def step_summary(step):
         img = os.path.basename(step.get('image_path', '')) or '?'
         on_found = dict(_IMAGE_ACTION_LABELS).get(
             step.get('on_found', 'click'), '?')
-        on_nf = dict(_IMAGE_NOT_FOUND_LABELS).get(
-            step.get('on_not_found', 'skip'), '?')
+        nf_raw = step.get('on_not_found', 'skip')
+        nf_norm = _IMAGE_NOT_FOUND_LEGACY_MAP.get(nf_raw, nf_raw)
+        on_nf = dict(_IMAGE_NOT_FOUND_LABELS).get(nf_norm, '?')
         ox = step.get('offset_x', 0)
         oy = step.get('offset_y', 0)
-        return f"图片查询  {img}  找到→{on_found} 偏移({ox},{oy})  未找到→{on_nf}"
+        retry = step.get('retry_seconds', 3.0)
+        return (f"图片查询  {img}  找到→{on_found} 偏移({ox},{oy})  "
+                f"未找到→重试{retry:.1f}s→{on_nf}")
     if t == 'wait':
         return f"等待      {step.get('ms', 500)} ms"
     return f"<未知步骤 {t}>"
@@ -459,7 +467,7 @@ class ImageSearchStepDialog:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("编辑[图片查询]")
-        self.dialog.geometry("520x480")
+        self.dialog.geometry("520x510")
         self.dialog.resizable(False, False)
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -518,19 +526,22 @@ class ImageSearchStepDialog:
         nf_row = ttk.Frame(nf_frame)
         nf_row.pack(fill=tk.X)
         ttk.Label(nf_row, text="处理:").pack(side=tk.LEFT)
+        nf_raw = initial.get('on_not_found', 'skip')
+        nf_init = _IMAGE_NOT_FOUND_LEGACY_MAP.get(nf_raw, nf_raw)
         self.nf_var = tk.StringVar(
-            value=dict(_IMAGE_NOT_FOUND_LABELS).get(
-                initial.get('on_not_found', 'skip'), '跳过本步'))
+            value=dict(_IMAGE_NOT_FOUND_LABELS).get(nf_init, '跳过本步'))
         ttk.Combobox(nf_row, textvariable=self.nf_var,
                      values=[label for _, label in _IMAGE_NOT_FOUND_LABELS],
                      state='readonly', width=20).pack(side=tk.LEFT, padx=5)
+        ttk.Label(nf_frame, text="(重试时长内一直找; 0 秒 = 不重试)",
+                  foreground='gray').pack(anchor=tk.W, pady=(4, 0))
 
         retry_row = ttk.Frame(nf_frame)
         retry_row.pack(fill=tk.X, pady=(6, 0))
         ttk.Label(retry_row, text="重试时长:").pack(side=tk.LEFT)
         self.retry_var = tk.DoubleVar(
             value=initial.get('retry_seconds', 3.0))
-        ttk.Spinbox(retry_row, from_=0.5, to=30.0, increment=0.5,
+        ttk.Spinbox(retry_row, from_=0.0, to=30.0, increment=0.5,
                     textvariable=self.retry_var, width=7).pack(
             side=tk.LEFT, padx=5)
         ttk.Label(retry_row, text="秒").pack(side=tk.LEFT)
