@@ -6,9 +6,11 @@
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import threading
 import keyboard
+
+from hotkey_manager import is_modifier_only_hotkey
 
 
 class HotkeySettingsDialog:
@@ -105,11 +107,20 @@ class HotkeySettingsDialog:
         """按键录制完成"""
         self._recording = None
         if which == 'start':
-            self.start_key_var.set(key)
             self.start_record_btn.config(text="录制", state=tk.NORMAL)
         else:
-            self.stop_key_var.set(key)
             self.stop_record_btn.config(text="录制", state=tk.NORMAL)
+        if is_modifier_only_hotkey(key):
+            messagebox.showwarning(
+                "提示",
+                f"录到的快捷键 '{key}' 只包含修饰键, 注册后每次按它都会触发。\n"
+                "请重新录制, 务必包含一个非修饰键 (如 `、F2、Q 等)。",
+                parent=self.dialog)
+            return
+        if which == 'start':
+            self.start_key_var.set(key)
+        else:
+            self.stop_key_var.set(key)
 
     def _on_record_failed(self, which):
         """录制失败"""

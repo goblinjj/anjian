@@ -20,6 +20,28 @@ _user32.GetForegroundWindow.restype = ctypes.c_void_p
 _user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
 _user32.GetAncestor.restype = ctypes.c_void_p
 
+# keyboard 库 read_hotkey 返回的修饰键名 (含 left/right 变体)
+_MODIFIER_KEY_NAMES = {
+    'ctrl', 'control', 'alt', 'shift', 'windows', 'win', 'cmd', 'super',
+    'left ctrl', 'right ctrl', 'left alt', 'right alt',
+    'left shift', 'right shift', 'left windows', 'right windows',
+}
+
+
+def is_modifier_only_hotkey(hotkey):
+    """判断录制结果是否只由修饰键组成。
+
+    keyboard.read_hotkey() 等到所有键松开后才返回组合。若用户先松开 Ctrl
+    再去按下一个键, 函数会立刻返回 'ctrl' (或 'ctrl+alt' 之类), 注册后
+    每次按 Ctrl 都会触发热键, 所以这类录制结果必须拒绝。
+    """
+    if not hotkey:
+        return True
+    parts = [p.strip() for p in str(hotkey).lower().split('+') if p.strip()]
+    if not parts:
+        return True
+    return all(p in _MODIFIER_KEY_NAMES for p in parts)
+
 
 class HotkeyManager:
     """快捷键管理器"""

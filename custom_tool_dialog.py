@@ -8,6 +8,8 @@ import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from hotkey_manager import is_modifier_only_hotkey
+
 # 单键 Combobox 候选 (按键 alias 沿用 bg_input._SPECIAL_VK)
 _SINGLE_KEY_PRESETS = [
     'enter', 'space', 'tab', 'esc', 'backspace',
@@ -412,8 +414,15 @@ class HotkeyStepDialog:
 
     def _on_recorded(self, key):
         self._recording = False
-        self.combo_var.set(key)
         self.record_btn.config(text="录制", state=tk.NORMAL)
+        if is_modifier_only_hotkey(key):
+            messagebox.showwarning(
+                "提示",
+                f"录到的组合键 '{key}' 只包含修饰键, 发送给游戏无意义。\n"
+                "请重新录制, 务必包含一个非修饰键 (如 c、f4、enter 等)。",
+                parent=self.dialog)
+            return
+        self.combo_var.set(key)
 
     def _on_record_failed(self):
         self._recording = False
